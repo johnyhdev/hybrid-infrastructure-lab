@@ -29,3 +29,10 @@ Terraform state is stored remotely in Azure Blob Storage.
 - Public blob access: Disabled
 - State locking: Enabled through the backend
 - Local state is not committed to Git
+
+## Phase 3 OIDC CI Test
+
+This change is created intentionally to test
+GitHub Actions Terraform Plan workflow.
+
+No Terraform Apply is executed in this phase.
