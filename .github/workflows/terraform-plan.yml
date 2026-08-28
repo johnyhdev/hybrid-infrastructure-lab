@@ -5,6 +5,7 @@ on:
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-plan.yml"
+      - ".tflint.hcl"
 
 permissions:
   id-token: write
@@ -41,6 +42,23 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v5
+
+      - name: TFLint Init
+        working-directory: terraform
+        run: tflint --init
+
+      - name: TFLint
+        working-directory: terraform
+        run: tflint --recursive
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform
+          framework: terraform
 
       - name: Terraform Version
         run: terraform version
