@@ -1,4 +1,5 @@
 # Phase 3 OIDC CI test
+# Phase 4 terraform-apply.yaml test
 
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
