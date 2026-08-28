@@ -59,6 +59,7 @@ jobs:
         with:
           directory: terraform
           framework: terraform
+          skip_path: terraform/.terraform
 
       - name: Terraform Version
         run: terraform version
