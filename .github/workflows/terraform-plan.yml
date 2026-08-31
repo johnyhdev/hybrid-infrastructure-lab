@@ -14,7 +14,6 @@ permissions:
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
-
     environment: terraform-plan
 
     defaults:
@@ -43,52 +42,48 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_wrapper: false   # <--- ĐÂY LÀ CHÌA KHÓA: Tắt wrapper để lấy log Terraform chuẩn
+          terraform_wrapper: false
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v5
 
       - name: TFLint Init
-        working-directory: terraform
         run: tflint --init
 
       - name: TFLint
-        working-directory: terraform
         run: tflint --recursive
 
-      - name: Checkov
-        uses: bridgecrewio/checkov-action@v12
+      # CÀI ĐẶT & CHẠY CHECKOV QUA PIP (TRÁNH DÙNG DOCKER ACTION BỊ XUNG ĐỘT)
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          directory: terraform
-          framework: terraform
-          skip_path: terraform/.terraform
+          python-version: '3.11'
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov
+        run: checkov -d . --framework terraform --skip-path .terraform
 
       - name: Terraform Version
-        working-directory: terraform
         run: terraform version
 
       - name: Terraform Init
-        working-directory: terraform
         run: terraform init
 
       - name: Terraform Format Check
-        working-directory: terraform
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
-        working-directory: terraform
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: terraform
-        run:  terraform plan -no-color -out=tfplan
+        run: terraform plan -no-color -out=tfplan
 
       - name: Show Terraform Plan
-        working-directory: terraform
         run: terraform show -no-color tfplan > tfplan.txt
 
       - name: Publish Terraform Plan Summary
-        working-directory: terraform
         run: |
           echo '## Terraform Plan Summary' >> "$GITHUB_STEP_SUMMARY"
           echo '```hcl' >> "$GITHUB_STEP_SUMMARY"
