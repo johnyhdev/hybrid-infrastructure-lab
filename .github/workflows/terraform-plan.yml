@@ -42,6 +42,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false   # <--- ĐÂY LÀ CHÌA KHÓA: Tắt wrapper để lấy log Terraform chuẩn
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v5
@@ -79,10 +81,7 @@ jobs:
 
       - name: Terraform Plan
         working-directory: terraform
-        # SỬA MẤU CHỐT: unset CHECKOV_RESULTS để xóa sạch output của Checkov khỏi biến môi trường
-        run: |
-          unset CHECKOV_RESULTS
-          terraform plan -no-color -out=tfplan
+        run:  terraform plan -no-color -out=tfplan
 
       - name: Show Terraform Plan
         working-directory: terraform
