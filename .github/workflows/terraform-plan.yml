@@ -74,4 +74,16 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -no-color
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Show Terraform Plan
+        run: terraform show -no-color tfplan > tfplan.txt
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: |
+            terraform/tfplan
+            terraform/tfplan.txt
+          retention-days: 7
