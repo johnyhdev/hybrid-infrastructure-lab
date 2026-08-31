@@ -58,7 +58,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Bật cache pip
+
+      # Caching thư mục ~/.cache/pip dựa trên OS và tên package Checkov
+      - name: Cache Pip Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-checkov
+          restore-keys: |
+            ${ runner.os }}-pip-
 
       - name: Install Checkov
         run: pip install checkov
