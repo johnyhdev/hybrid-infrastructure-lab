@@ -58,12 +58,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip' # Bật cache pip
 
       - name: Install Checkov
         run: pip install checkov
 
       - name: Run Checkov
-        run: checkov -d . --framework terraform --skip-path .terraform
+        run: checkov --config-file ../.checkov.yaml -d . --framework terraform --skip-path .terraform
 
       - name: Terraform Version
         run: terraform version
