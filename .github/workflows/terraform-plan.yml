@@ -83,8 +83,8 @@ jobs:
       - name: Publish Terraform Plan Summary
         working-directory: terraform
         run: |
-          echo '## Terraform Plan' >> "$GITHUB_STEP_SUMMARY"
-          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          echo '## Terraform Plan Summary' >> "$GITHUB_STEP_SUMMARY"
+          echo '```hcl' >> "$GITHUB_STEP_SUMMARY"
           cat tfplan.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
