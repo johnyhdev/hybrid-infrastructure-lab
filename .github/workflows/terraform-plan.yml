@@ -10,6 +10,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 jobs:
   terraform-plan:
@@ -53,27 +54,6 @@ jobs:
       - name: TFLint
         run: tflint --recursive
 
-      # CÀI ĐẶT & CHẠY CHECKOV QUA PIP (TRÁNH DÙNG DOCKER ACTION BỊ XUNG ĐỘT)
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # Caching thư mục ~/.cache/pip dựa trên OS và tên package Checkov
-      - name: Cache Pip Packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-checkov
-          restore-keys: |
-            ${ runner.os }}-pip-
-
-      - name: Install Checkov
-        run: pip install checkov
-
-      - name: Run Checkov
-        run: checkov --config-file ../.checkov.yaml -d . --framework terraform --skip-path .terraform
-
       - name: Terraform Version
         run: terraform version
 
@@ -86,20 +66,21 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      # 1. TẠO FILE PLAN VÀ XUẤT OUTPUT TRỰC TIẾP
       - name: Terraform Plan
         run: terraform plan -no-color -out=tfplan
 
-      - name: Show Terraform Plan
+      - name: Render Terraform Plan Text
         run: terraform show -no-color tfplan > tfplan.txt
 
       - name: Publish Terraform Plan Summary
         run: |
-          echo '## Terraform Plan Summary' >> "$GITHUB_STEP_SUMMARY"
-          echo '```hcl' >> "$GITHUB_STEP_SUMMARY"
-          cat tfplan.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "## Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          cat tfplan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload Terraform Plan
+      - name: Upload Terraform Plan Artifact
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
@@ -107,3 +88,11 @@ jobs:
             terraform/tfplan
             terraform/tfplan.txt
           retention-days: 7
+
+      # 2. CHẠY CHECKOV BẰNG DOCKER Ở BƯỚC CUỐI CÙNG (Dùng config từ Root, không ảnh hưởng Terraform)
+      - name: Checkov Security Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform
+          framework: terraform
+          config_file: .checkov.yaml
