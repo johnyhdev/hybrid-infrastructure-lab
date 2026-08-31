@@ -77,9 +77,11 @@ jobs:
         run: terraform plan -no-color -out=tfplan
 
       - name: Show Terraform Plan
+        working-directory: terraform
         run: terraform show -no-color tfplan > tfplan.txt
 
       - name: Publish Terraform Plan Summary
+        working-directory: terraform
         run: |
           echo '## Terraform Plan' >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
