@@ -88,7 +88,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Create Plan Metadata
-          run: |
+        run: |
           echo "Repository: $GITHUB_REPOSITORY" > plan-metadata.txt
           echo "Commit SHA: $GITHUB_SHA" >> plan-metadata.txt
           echo "PR Number: ${{ github.event.pull_request.number }}" >> plan-metadata.txt
