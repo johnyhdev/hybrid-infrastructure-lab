@@ -54,6 +54,13 @@ jobs:
       - name: TFLint
         run: tflint --recursive
 
+      - name: Checkov Security Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform
+          framework: terraform
+          config_file: .checkov.yaml
+
       - name: Terraform Version
         run: terraform version
 
@@ -75,11 +82,10 @@ jobs:
 
       - name: Publish Terraform Plan Summary
         run: |
-          PLAN_OUTPUT=$(terraform show -no-color tfplan)
           {
             echo "## 📋 Terraform Plan Summary"
             echo '```hcl'
-            echo "$PLAN_OUTPUT"
+            sed -n '/Terraform used the selected providers/,$p' tfplan.txt
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
@@ -91,11 +97,3 @@ jobs:
             terraform/tfplan
             terraform/tfplan.txt
           retention-days: 7
-
-      # 2. CHẠY CHECKOV BẰNG DOCKER Ở BƯỚC CUỐI CÙNG (Dùng config từ Root, không ảnh hưởng Terraform)
-      - name: Checkov Security Scan
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: terraform
-          framework: terraform
-          config_file: .checkov.yaml
