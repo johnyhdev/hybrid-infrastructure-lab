@@ -83,15 +83,26 @@ jobs:
       - name: Publish Terraform Plan Summary
         run: |
           echo "## Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
           cat tfplan.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Create Plan Metadata
+          run: |
+          echo "Repository: $GITHUB_REPOSITORY" > plan-metadata.txt
+          echo "Commit SHA: $GITHUB_SHA" >> plan-metadata.txt
+          echo "PR Number: ${{ github.event.pull_request.number }}" >> plan-metadata.txt
+          echo "PR Head SHA: ${{ github.event.pull_request.head.sha }}" >> plan-metadata.txt
+          echo "Workflow Run ID: ${{ github.run_id }}" >> plan-metadata.txt
+          echo "Workflow Run Attempt: ${{ github.run_attempt }}" >> plan-metadata.txt
+          echo "Plan Artifact: terraform-plan-${{ github.event.pull_request.head.sha }}" >> plan-metadata.txt
 
       - name: Upload Terraform Plan Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan
+          name: terraform-plan-${{ github.event.pull_request.head.sha }}
           path: |
             terraform/tfplan
             terraform/tfplan.txt
+            plan-metadata.txt
           retention-days: 7

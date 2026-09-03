@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "terraform/**"
-      - ".github/workflows/terraform-apply.yml"
 
 permissions:
   id-token: write
@@ -14,7 +13,7 @@ permissions:
 
 jobs:
   terraform-apply:
-
+    name: Terraform Apply
     runs-on: ubuntu-latest
 
     environment:
@@ -50,14 +49,3 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
