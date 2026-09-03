@@ -82,12 +82,10 @@ jobs:
 
       - name: Publish Terraform Plan Summary
         run: |
-          {
-            echo "## 📋 Terraform Plan Summary"
-            echo '```hcl'
-            sed -n '/Terraform used the selected providers/,$p' tfplan.txt
-            echo '```'
-          } >> $GITHUB_STEP_SUMMARY
+          echo "## Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          cat tfplan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Terraform Plan Artifact
         uses: actions/upload-artifact@v4
