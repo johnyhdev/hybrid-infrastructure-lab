@@ -104,5 +104,5 @@ jobs:
           path: |
             terraform/tfplan
             terraform/tfplan.txt
-            plan-metadata.txt
+            terraform/plan-metadata.txt
           retention-days: 7
