@@ -142,17 +142,13 @@ jobs:
           PLAN_RUN_ID: ${{ needs.prepare.outputs.plan_run_id }}
           ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}
         run: |
-          echo "Downloading:"
-          echo "Run ID: $PLAN_RUN_ID"
-          echo "Artifact: $ARTIFACT_NAME"
+          echo "Downloading Artifact: $ARTIFACT_NAME from Run ID: $PLAN_RUN_ID"
 
-          cd ..
-
+          # Tải thẳng nội dung artifact vào thư mục làm việc hiện tại (terraform/)
           gh run download "$PLAN_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name "$ARTIFACT_NAME"
-
-          cd terraform
+            --name "$ARTIFACT_NAME" \
+            --dir .
 
       - name: Verify Plan Files
         run: |
@@ -166,16 +162,12 @@ jobs:
         env:
           EXPECTED_SHA: ${{ needs.prepare.outputs.plan_sha }}
         run: |
-          echo "Expected SHA:"
-          echo "$EXPECTED_SHA"
-
-          echo
-          echo "Plan metadata:"
+          echo "Expected SHA: $EXPECTED_SHA"
+          echo "Plan metadata content:"
           cat plan-metadata.txt
 
           grep -q "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
 
-          echo
           echo "Plan metadata verified."
 
       - name: Show Approved Terraform Plan
