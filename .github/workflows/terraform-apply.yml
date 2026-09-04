@@ -1,22 +1,22 @@
 name: Terraform Apply
 
 on:
-  pull_request:
-    types:
-      - closed
+  push:
     branches:
       - main
+    paths:
+      - "terraform/**"
 
 permissions:
   id-token: write
   contents: read
   actions: read
+  pull-requests: read
 
 jobs:
 
   prepare:
     name: Find Approved Terraform Plan
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     outputs:
@@ -28,22 +28,39 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
-      - name: Show Merge Information
+      - name: Show Merge Commit
         run: |
-          echo "PR Number: ${{ github.event.pull_request.number }}"
-          echo "PR Head SHA: ${{ github.event.pull_request.head.sha }}"
-          echo "Merge Commit SHA: ${{ github.event.pull_request.merge_commit_sha }}"
+          echo "Main Commit SHA:"
+          echo "$GITHUB_SHA"
+
+      - name: Find Pull Request
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_HEAD_SHA=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '.[] | select(.base.ref == "main") | .head.sha' \
+            | head -n 1)
+
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "ERROR: Could not find merged PR for commit $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "PR Head SHA: $PR_HEAD_SHA"
+
+          echo "pr_head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Find Successful Terraform Plan
         id: find-plan
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_SHA: ${{ steps.find-pr.outputs.pr_head_sha }}
         run: |
-          echo "Searching Terraform Plan run for:"
+          echo "Searching Terraform Plan for:"
           echo "$PR_HEAD_SHA"
 
           RUN_ID=$(gh run list \
@@ -90,9 +107,10 @@ jobs:
 
           echo "Terraform Plan SHA verified."
 
+
   apply:
     name: Apply Approved Terraform Plan
-    if: github.event.pull_request.merged == true
+
     needs:
       - prepare
 
@@ -115,10 +133,8 @@ jobs:
 
     steps:
 
-      - name: Checkout Merge Commit
+      - name: Checkout Main
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Azure Login
         uses: azure/login@v3
