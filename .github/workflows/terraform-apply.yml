@@ -1,19 +1,101 @@
 name: Terraform Apply
 
 on:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
       - main
-    paths:
-      - "terraform/**"
 
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 jobs:
-  terraform-apply:
-    name: Terraform Apply
+
+  prepare:
+    name: Find Approved Terraform Plan
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    outputs:
+      plan_run_id: ${{ steps.find-plan.outputs.plan_run_id }}
+      plan_sha: ${{ steps.find-plan.outputs.plan_sha }}
+      artifact_name: ${{ steps.find-plan.outputs.artifact_name }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Show Merge Information
+        run: |
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "PR Head SHA: ${{ github.event.pull_request.head.sha }}"
+          echo "Merge Commit SHA: ${{ github.event.pull_request.merge_commit_sha }}"
+
+      - name: Find Successful Terraform Plan
+        id: find-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "Searching Terraform Plan run for:"
+          echo "$PR_HEAD_SHA"
+
+          RUN_ID=$(gh run list \
+            --workflow terraform-plan.yml \
+            --commit "$PR_HEAD_SHA" \
+            --status success \
+            --limit 10 \
+            --json databaseId,headSha,conclusion \
+            --jq '.[] | select(.headSha == "'"$PR_HEAD_SHA"'") | .databaseId' \
+            | head -n 1)
+
+          if [ -z "$RUN_ID" ]; then
+            echo "ERROR: No successful Terraform Plan run found."
+            exit 1
+          fi
+
+          ARTIFACT_NAME="terraform-plan-$PR_HEAD_SHA"
+
+          echo "Plan Run ID: $RUN_ID"
+          echo "Plan SHA: $PR_HEAD_SHA"
+          echo "Artifact: $ARTIFACT_NAME"
+
+          echo "plan_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "plan_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Plan Run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
+          EXPECTED_SHA: ${{ steps.find-plan.outputs.plan_sha }}
+        run: |
+          ACTUAL_SHA=$(gh run view "$PLAN_RUN_ID" \
+            --json headSha \
+            --jq '.headSha')
+
+          echo "Expected SHA: $EXPECTED_SHA"
+          echo "Actual SHA:   $ACTUAL_SHA"
+
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "ERROR: Terraform Plan SHA mismatch."
+            exit 1
+          fi
+
+          echo "Terraform Plan SHA verified."
+
+  apply:
+    name: Apply Approved Terraform Plan
+    if: github.event.pull_request.merged == true
+    needs:
+      - prepare
+
     runs-on: ubuntu-latest
 
     environment:
@@ -33,8 +115,10 @@ jobs:
 
     steps:
 
-      - name: Checkout
+      - name: Checkout Merge Commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Azure Login
         uses: azure/login@v3
@@ -46,6 +130,58 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Terraform Version
+        run: terraform version
+
       - name: Terraform Init
         run: terraform init
 
+      - name: Download Exact Terraform Plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ needs.prepare.outputs.plan_run_id }}
+          ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}
+        run: |
+          echo "Downloading:"
+          echo "Run ID: $PLAN_RUN_ID"
+          echo "Artifact: $ARTIFACT_NAME"
+
+          cd ..
+
+          gh run download "$PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME"
+
+          cd terraform
+
+      - name: Verify Plan Files
+        run: |
+          test -f tfplan
+          test -f tfplan.txt
+          test -f plan-metadata.txt
+
+          echo "Terraform plan files found."
+
+      - name: Verify Plan Metadata
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.plan_sha }}
+        run: |
+          echo "Expected SHA:"
+          echo "$EXPECTED_SHA"
+
+          echo
+          echo "Plan metadata:"
+          cat plan-metadata.txt
+
+          grep -q "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
+
+          echo
+          echo "Plan metadata verified."
+
+      - name: Show Approved Terraform Plan
+        run: |
+          terraform show -no-color tfplan
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -no-color tfplan
