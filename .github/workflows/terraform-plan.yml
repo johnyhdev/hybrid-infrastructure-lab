@@ -89,13 +89,15 @@ jobs:
 
       - name: Create Plan Metadata
         run: |
-          echo "Repository: $GITHUB_REPOSITORY" > plan-metadata.txt
-          echo "Commit SHA: $GITHUB_SHA" >> plan-metadata.txt
-          echo "PR Number: ${{ github.event.pull_request.number }}" >> plan-metadata.txt
-          echo "PR Head SHA: ${{ github.event.pull_request.head.sha }}" >> plan-metadata.txt
-          echo "Workflow Run ID: ${{ github.run_id }}" >> plan-metadata.txt
-          echo "Workflow Run Attempt: ${{ github.run_attempt }}" >> plan-metadata.txt
-          echo "Plan Artifact: terraform-plan-${{ github.event.pull_request.head.sha }}" >> plan-metadata.txt
+          cat > plan-metadata.txt <<EOF
+          Repository: $GITHUB_REPOSITORY
+          Commit SHA: ${{ github.event.pull_request.head.sha }}
+          PR Number: ${{ github.event.pull_request.number }}
+          PR Head SHA: ${{ github.event.pull_request.head.sha }}
+          Workflow Run ID: ${{ github.run_id }}
+          Workflow Run Attempt: ${{ github.run_attempt }}
+          Plan Artifact: terraform-plan-${{ github.event.pull_request.head.sha }}
+          EOF
 
       - name: Upload Terraform Plan Artifact
         uses: actions/upload-artifact@v4

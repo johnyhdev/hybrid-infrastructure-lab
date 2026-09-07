@@ -34,58 +34,69 @@ jobs:
           echo "Main Commit SHA:"
           echo "$GITHUB_SHA"
 
-      - name: Find Pull Request
+            - name: Find merged PR
         id: find-pr
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PR_HEAD_SHA=$(gh api \
+          PR_JSON=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            "/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
-            --jq '.[] | select(.base.ref == "main") | .head.sha' \
-            | head -n 1)
+            "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")
 
-          if [ -z "$PR_HEAD_SHA" ]; then
-            echo "ERROR: Could not find merged PR for commit $GITHUB_SHA"
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
+          PR_HEAD_SHA=$(echo "$PR_JSON" | jq -r '.[0].head.sha')
+
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No pull request found for commit ${GITHUB_SHA}"
             exit 1
           fi
 
+          echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "PR_HEAD_SHA=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          echo "PR Number: $PR_NUMBER"
           echo "PR Head SHA: $PR_HEAD_SHA"
 
-          echo "pr_head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
-
-      - name: Find Successful Terraform Plan
+      - name: Find successful Terraform Plan
         id: find-plan
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_HEAD_SHA: ${{ steps.find-pr.outputs.pr_head_sha }}
+          PR_HEAD_SHA: ${{ steps.find-pr.outputs.PR_HEAD_SHA }}
         run: |
-          echo "Searching Terraform Plan for:"
-          echo "$PR_HEAD_SHA"
-
-          RUN_ID=$(gh run list \
+          RUN_JSON=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
             --workflow terraform-plan.yml \
             --commit "$PR_HEAD_SHA" \
             --status success \
             --limit 10 \
-            --json databaseId,headSha,conclusion \
-            --jq '.[] | select(.headSha == "'"$PR_HEAD_SHA"'") | .databaseId' \
-            | head -n 1)
+            --json databaseId,headSha,status,conclusion,workflowName)
 
-          if [ -z "$RUN_ID" ]; then
-            echo "ERROR: No successful Terraform Plan run found."
+          PLAN_RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId')
+          PLAN_SHA=$(echo "$RUN_JSON" | jq -r '.[0].headSha')
+
+          if [ -z "$PLAN_RUN_ID" ] || [ "$PLAN_RUN_ID" = "null" ]; then
+            echo "No successful Terraform Plan run found."
+            echo "Expected SHA: $PR_HEAD_SHA"
             exit 1
           fi
 
-          ARTIFACT_NAME="terraform-plan-$PR_HEAD_SHA"
+          if [ "$PLAN_SHA" != "$PR_HEAD_SHA" ]; then
+            echo "Terraform Plan SHA mismatch."
+            echo "Expected: $PR_HEAD_SHA"
+            echo "Found:    $PLAN_SHA"
+            exit 1
+          fi
 
-          echo "Plan Run ID: $RUN_ID"
-          echo "Plan SHA: $PR_HEAD_SHA"
+          ARTIFACT_NAME="terraform-plan-${PR_HEAD_SHA}"
+
+          echo "plan_run_id=$PLAN_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "plan_sha=$PLAN_SHA" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+          echo "Plan Run ID: $PLAN_RUN_ID"
+          echo "Plan SHA: $PLAN_SHA"
           echo "Artifact: $ARTIFACT_NAME"
 
-          echo "plan_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "plan_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Verify Plan Run
         env:
@@ -111,8 +122,7 @@ jobs:
   apply:
     name: Apply Approved Terraform Plan
 
-    needs:
-      - prepare
+    needs: prepare
 
     runs-on: ubuntu-latest
 
@@ -152,39 +162,36 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Download Exact Terraform Plan
+      - name: Download Approved Terraform Plan
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ needs.prepare.outputs.plan_run_id }}
           ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}
         run: |
-          echo "Downloading Artifact: $ARTIFACT_NAME from Run ID: $PLAN_RUN_ID"
-
-          # Tải thẳng nội dung artifact vào thư mục làm việc hiện tại (terraform/)
           gh run download "$PLAN_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
             --name "$ARTIFACT_NAME" \
             --dir .
 
-      - name: Verify Plan Files
+      - name: Verify Terraform Plan
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.plan_sha }}
+          EXPECTED_ARTIFACT: ${{ needs.prepare.outputs.artifact_name }}
         run: |
           test -f tfplan
           test -f tfplan.txt
           test -f plan-metadata.txt
 
-          echo "Terraform plan files found."
-
-      - name: Verify Plan Metadata
-        env:
-          EXPECTED_SHA: ${{ needs.prepare.outputs.plan_sha }}
-        run: |
           echo "Expected SHA: $EXPECTED_SHA"
-          echo "Plan metadata content:"
+          echo "Expected Artifact: $EXPECTED_ARTIFACT"
+
           cat plan-metadata.txt
 
-          grep -q "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
+          grep -F "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
+          grep -F "Plan Artifact: $EXPECTED_ARTIFACT" plan-metadata.txt
 
-          echo "Plan metadata verified."
+          echo "Terraform plan artifact verification: PASS"
+
 
       - name: Show Approved Terraform Plan
         run: |
