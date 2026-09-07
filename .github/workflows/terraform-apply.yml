@@ -34,7 +34,7 @@ jobs:
           echo "Main Commit SHA:"
           echo "$GITHUB_SHA"
 
-            - name: Find merged PR
+      - name: Find merged PR
         id: find-pr
         env:
           GH_TOKEN: ${{ github.token }}
