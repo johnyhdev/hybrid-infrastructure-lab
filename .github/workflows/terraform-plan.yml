@@ -7,6 +7,11 @@ on:
       - ".github/workflows/terraform-plan.yml"
       - ".tflint.hcl"
 
+# Giúp các workflow chạy nối đuôi nhau thay vì đè lock lên nhau
+concurrency:
+  group: terraform-state-lock
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
