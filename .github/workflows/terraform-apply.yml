@@ -118,6 +118,46 @@ jobs:
 
           echo "Terraform Plan SHA verified."
 
+      - name: Download Approved Plan for Review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
+          ARTIFACT_NAME: ${{ steps.find-plan.outputs.artifact_name }}
+        run: |
+          mkdir -p approved-plan
+
+          gh run download "$PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir approved-plan
+
+          echo "Approved Terraform plan downloaded for review."
+          ls -la approved-plan
+
+
+      - name: Publish Terraform Plan Summary
+        env:
+          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
+          PR_HEAD_SHA: ${{ steps.find-pr.outputs.PR_HEAD_SHA }}
+          PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
+          ARTIFACT_NAME: ${{ steps.find-plan.outputs.artifact_name }}
+        run: |
+          {
+            echo "## Approved Terraform Plan"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| PR | #${PR_NUMBER} |"
+            echo "| PR Head SHA | \`${PR_HEAD_SHA}\` |"
+            echo "| Plan Run | \`${PLAN_RUN_ID}\` |"
+            echo "| Artifact | \`${ARTIFACT_NAME}\` |"
+            echo
+            echo "## Terraform Changes"
+            echo
+            echo '```text'
+            cat approved-plan/tfplan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   apply:
     name: Apply Approved Terraform Plan
