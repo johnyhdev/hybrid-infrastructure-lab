@@ -1,6 +1,6 @@
 # Phase 3 OIDC CI test
 # Phase 4 terraform-apply.yaml test new
-# phase 5 terraform apply fix test trigger v1
+# phase 5 terraform apply check controlled apply
 
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
