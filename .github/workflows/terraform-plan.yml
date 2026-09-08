@@ -78,7 +78,7 @@ jobs:
       - name: Terraform Plan
         run: terraform plan -no-color -out=tfplan
 
-      - name: Render Terraform Plan Text
+      - name: Show Terraform Plan
         run: terraform show -no-color tfplan > tfplan.txt
 
       - name: Publish Terraform Plan Summary

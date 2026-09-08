@@ -54,9 +54,6 @@ jobs:
           echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "PR_HEAD_SHA=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-          echo "PR Number: $PR_NUMBER"
-          echo "PR Head SHA: $PR_HEAD_SHA"
-
       - name: Find successful Terraform Plan
         id: find-plan
         env:
@@ -92,11 +89,6 @@ jobs:
           echo "plan_run_id=$PLAN_RUN_ID" >> "$GITHUB_OUTPUT"
           echo "plan_sha=$PLAN_SHA" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
-
-          echo "Plan Run ID: $PLAN_RUN_ID"
-          echo "Plan SHA: $PLAN_SHA"
-          echo "Artifact: $ARTIFACT_NAME"
-
 
       - name: Verify Plan Run
         env:
@@ -213,7 +205,7 @@ jobs:
             --name "$ARTIFACT_NAME" \
             --dir .
 
-      - name: Verify Terraform Plan
+      - name: Verify Terraform Plan Artifact
         env:
           EXPECTED_SHA: ${{ needs.prepare.outputs.plan_sha }}
           EXPECTED_ARTIFACT: ${{ needs.prepare.outputs.artifact_name }}
@@ -221,22 +213,12 @@ jobs:
           test -f tfplan
           test -f tfplan.txt
           test -f plan-metadata.txt
-
-          echo "Expected SHA: $EXPECTED_SHA"
-          echo "Expected Artifact: $EXPECTED_ARTIFACT"
-
-          cat plan-metadata.txt
-
           grep -F "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
           grep -F "Plan Artifact: $EXPECTED_ARTIFACT" plan-metadata.txt
-
           echo "Terraform plan artifact verification: PASS"
 
-
       - name: Show Approved Terraform Plan
-        run: |
-          terraform show -no-color tfplan
+        run: terraform show -no-color tfplan
 
       - name: Terraform Apply
-        run: |
-          terraform apply -no-color tfplan
+        run: terraform apply -no-color tfplan
