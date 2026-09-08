@@ -218,7 +218,7 @@ jobs:
           echo "Terraform plan artifact verification: PASS"
 
       - name: Show Approved Terraform Plan
-        run: terraform show -no-color -lock=false tfplan
+        run: terraform show -no-color tfplan
 
       - name: Terraform Apply
         run: terraform apply -no-color tfplan
