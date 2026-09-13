@@ -232,5 +232,5 @@ jobs:
           oauth-client-id: ${{ vars.TAILSCALE_POLICY_CLIENT_ID }}
           audience: ${{ vars.TAILSCALE_POLICY_AUDIENCE }}
           tailnet: ${{ vars.TAILSCALE_TAILNET }}
-          policy-file: policy.hujson
+          policy-file: tailscale/policy.hujson
           action: apply
