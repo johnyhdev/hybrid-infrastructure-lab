@@ -1,0 +1,57 @@
+#cloud-config
+
+package_update: true
+
+packages:
+  - curl
+  - git
+  - jq
+  - tar
+
+write_files:
+
+  - path: /usr/local/bin/install-tailscale.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      if command -v tailscale >/dev/null 2>&1; then
+        exit 0
+      fi
+
+      curl -fsSL https://tailscale.com/install.sh | sh
+
+  - path: /usr/local/bin/install-k3s.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      if systemctl is-active --quiet k3s; then
+        exit 0
+      fi
+
+      curl -sfL https://get.k3s.io | sh -
+
+runcmd:
+
+  - /usr/local/bin/install-tailscale.sh
+
+  - systemctl enable --now tailscaled
+
+  - |
+      tailscale version
+
+  - |
+      tailscale up \
+        --client-id="${tailscale_client_id}?ephemeral=true&preauthorized=true" \
+        --audience="${tailscale_audience}" \
+        --advertise-tags=tag:awx \
+        --hostname=vm-awx
+
+  - /usr/local/bin/install-k3s.sh
+
+  - systemctl enable --now k3s

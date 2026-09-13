@@ -1,0 +1,34 @@
+{
+	// 1. Khai báo quyền sở hữu Tags (Bắt buộc đủ 3 tags theo Checkpoint)
+	"tagOwners": {
+		"tag:awx": ["autogroup:admin"],
+		"tag:ci":  ["autogroup:admin"],
+	},
+
+	// 2. Quy tắc truy cập Explicit (Grants)
+	"grants": [
+		// Cho phép Admin truy cập toàn bộ thiết bị để quản trị
+		{
+			"src": ["autogroup:admin"],
+			"dst": ["*"],
+			"ip":  ["*"],
+		},
+
+		// Tag CI chỉ được phép gọi TCP (22) tới AWX
+		{
+			"src": ["tag:ci"],
+			"dst": ["tag:awx"],
+			"ip":  ["tcp:22", "tcp:443"],
+		},
+	],
+
+	// 3. Quyền SSH mặc định của Tailscale
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+}

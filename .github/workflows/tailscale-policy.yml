@@ -1,0 +1,26 @@
+name: Tailscale Policy
+
+on:
+  pull_request:
+    paths:
+      - "tailscale/policy.hujson"
+      - ".github/workflows/tailscale-policy.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "tailscale/policy.hujson"
+      - ".github/workflows/tailscale-policy.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate Tailscale Policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate policy JSON
+        run: jq empty tailscale/policy.hujson

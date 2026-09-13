@@ -35,3 +35,20 @@ variable "ssh_public_key" {
   type        = string
   sensitive   = true
 }
+
+# Phase 6 - Config variables
+variable "automation_subnet_name" {
+  description = "Automation Subnet name"
+  type        = string
+  default     = "snet-automation"
+}
+
+variable "tailscale_client_id" {
+  description = "Tailscale federated identity client ID for the AWX VM"
+  type        = string
+}
+
+variable "tailscale_audience" {
+  description = "Tailscale federated identity audience for the AWX VM"
+  type        = string
+}
