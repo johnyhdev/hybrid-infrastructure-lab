@@ -25,6 +25,9 @@ jobs:
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      #Phase 6 - Add tailscale WIF
+      TF_VAR_tailscale_client_id: ${{ vars.TAILSCALE_AWX_CLIENT_ID }}
+      TF_VAR_tailscale_audience: ${{ vars.TAILSCALE_AWX_AUDIENCE }}
 
     steps:
       - name: Checkout

@@ -46,9 +46,11 @@ variable "automation_subnet_name" {
 variable "tailscale_client_id" {
   description = "Tailscale federated identity client ID for the AWX VM"
   type        = string
+  default     = "TNyex2DCUG11CNTRL-kFo6dvm88Q11CNTRL"
 }
 
 variable "tailscale_audience" {
   description = "Tailscale federated identity audience for the AWX VM"
   type        = string
+  default     = "api.tailscale.com/TNyex2DCUG11CNTRL-kFo6dvm88Q11CNTRL"
 }
