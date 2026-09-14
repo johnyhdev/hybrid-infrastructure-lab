@@ -225,12 +225,3 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -no-color tfplan
-
-      - name: Apply Tailscale Policy
-        uses: tailscale/gitops-acl-action@v1
-        with:
-          oauth-client-id: ${{ vars.TAILSCALE_POLICY_CLIENT_ID }}
-          audience: ${{ vars.TAILSCALE_POLICY_AUDIENCE }}
-          tailnet: ${{ vars.TAILSCALE_TAILNET }}
-          policy-file: tailscale/policy.hujson
-          action: apply

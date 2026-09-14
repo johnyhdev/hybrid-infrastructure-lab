@@ -17,10 +17,29 @@ permissions:
   id-token: write
 
 jobs:
-  validate:
-    name: Validate Tailscale Policy
+  policy:
+    name: Tailscale Policy GitOps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Validate policy JSON
-        run: jq empty tailscale/policy.hujson
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test Policy
+        if: github.event_name == 'pull_request'
+        uses: tailscale/gitops-acl-action@v1
+        with:
+          oauth-client-id: ${{ vars.TAILSCALE_POLICY_CLIENT_ID }}
+          audience: ${{ vars.TAILSCALE_POLICY_AUDIENCE }}
+          tailnet: ${{ vars.TAILSCALE_TAILNET }}
+          policy-file: tailscale/policy.hujson
+          action: test
+
+      - name: Apply Policy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: tailscale/gitops-acl-action@v1
+        with:
+          oauth-client-id: ${{ vars.TAILSCALE_POLICY_CLIENT_ID }}
+          audience: ${{ vars.TAILSCALE_POLICY_AUDIENCE }}
+          tailnet: ${{ vars.TAILSCALE_TAILNET }}
+          policy-file: tailscale/policy.hujson
+          action: apply

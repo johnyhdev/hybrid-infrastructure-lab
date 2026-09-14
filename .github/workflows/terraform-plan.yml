@@ -43,15 +43,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Test Tailscale Policy
-        uses: tailscale/gitops-acl-action@v1
-        with:
-          oauth-client-id: ${{ vars.TAILSCALE_POLICY_CLIENT_ID }}
-          audience: ${{ vars.TAILSCALE_POLICY_AUDIENCE }}
-          tailnet: ${{ vars.TAILSCALE_TAILNET }}
-          policy-file: tailscale/policy.hujson
-          action: test
-
       - name: Azure Login
         uses: azure/login@v3
         with:
