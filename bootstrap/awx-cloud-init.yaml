@@ -9,7 +9,6 @@ packages:
   - tar
 
 write_files:
-
   - path: /usr/local/bin/install-tailscale.sh
     permissions: "0755"
     owner: root:root
@@ -37,21 +36,22 @@ write_files:
       curl -sfL https://get.k3s.io | sh -
 
 runcmd:
+  # Ghi log ra file để dễ dàng audit/debug qua Serial Console nếu có sự cố
+  - exec > /var/log/awx-cloud-init.log 2>&1
 
   - /usr/local/bin/install-tailscale.sh
-
   - systemctl enable --now tailscaled
 
-  - |
-      tailscale version
+  # Chờ tailscaled service khởi động sẵn sàng
+  - sleep 3
 
+  # Kích hoạt WIF Authentication với Azure Managed Identity
   - |
-      tailscale up \
-        --client-id="${tailscale_client_id}?ephemeral=true&preauthorized=true" \
-        --audience="${tailscale_audience}" \
-        --advertise-tags=tag:awx \
-        --hostname=vm-awx
+    tailscale up \
+      --client-id="${tailscale_client_id}" \
+      --audience="${tailscale_audience}" \
+      --advertise-tags=tag:awx \
+      --hostname=vm-awx
 
   - /usr/local/bin/install-k3s.sh
-
   - systemctl enable --now k3s
