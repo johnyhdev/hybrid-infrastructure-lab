@@ -19,6 +19,11 @@ jobs:
     name: Find Approved Terraform Plan
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write # <--- Thêm quyền write cho job prepare
+
     outputs:
       plan_run_id: ${{ steps.find-plan.outputs.plan_run_id }}
       plan_sha: ${{ steps.find-plan.outputs.plan_sha }}

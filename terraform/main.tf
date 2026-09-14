@@ -1,7 +1,7 @@
 # Phase 3 OIDC CI test
 # Phase 4 terraform-apply.yaml test new
 # phase 5 terraform apply check controlled apply v3
-# phase 6 terraform Git AWX tailscale v1
+# phase 6 terraform Git AWX tailscale v2
 
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
