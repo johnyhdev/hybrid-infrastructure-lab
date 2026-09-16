@@ -1,10 +1,3 @@
-resource "azurerm_subnet" "automation" {
-  name                 = var.automation_subnet_name
-  resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.20.2.0/24"]
-}
-
 resource "azurerm_network_security_group" "awx" {
   name                = "nsg-vm-awx"
   location            = azurerm_resource_group.main.location
@@ -54,9 +47,6 @@ resource "azurerm_linux_virtual_machine" "awx" {
       tailscale_audience  = var.tailscale_audience
     })
   )
-
-
-
 
   os_disk {
     caching              = "ReadWrite"
