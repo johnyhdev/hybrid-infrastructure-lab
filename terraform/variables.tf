@@ -56,31 +56,31 @@ variable "workload_subnet_name" {
   default     = "snet-workload"
 }
 
-variable "awx_vms" {
-  type = map(object({
-    size = string
-    zone = string
-  }))
+#variable "awx_vms" {
+#  type = map(object({
+#    size = string
+#    zone = string
+#  }))
 
 
-  default = {
-    "vm-awx-01" = {
-      size = "Standard_D2ls_v6"
-      zone = "1"
-    }
-  }
-}
+#  default = {
+#    "vm-awx-01" = {
+#      size = "Standard_D2ls_v6"
+#      zone = "1"
+#    }
+#  }
+#}
 
-variable "workload_vms" {
-  type = map(object({
-    size = string
-    zone = string
-  }))
+#variable "workload_vms" {
+#  type = map(object({
+#    size = string
+#    zone = string
+#  }))
 
-  default = {
-    "vm-workload-01" = {
-      size = "Standard_D2ls_v6"
-      zone = "1"
-    }
-  }
-}
+#  default = {
+#    "vm-workload-01" = {
+#      size = "Standard_D2ls_v6"
+#      zone = "1"
+#    }
+#  }
+#}
