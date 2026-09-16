@@ -11,7 +11,7 @@ output "vnet_name" {
 output "subnets" {
   description = "Available subnets"
   value = {
-    management = azurerm_subnet.management.name
+    workload   = azurerm_subnet.workload.name
     automation = azurerm_subnet.automation.name
   }
 }
@@ -32,7 +32,7 @@ output "workload_vms" {
   value = {
     (azurerm_linux_virtual_machine.main.name) = {
       private_ip = azurerm_network_interface.vm.private_ip_address
-      subnet     = azurerm_subnet.management.name
+      subnet     = azurerm_subnet.workload.name
       nic_id     = azurerm_network_interface.vm.id
     }
   }

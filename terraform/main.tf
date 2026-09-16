@@ -3,10 +3,22 @@
 # phase 5 terraform apply check controlled apply v3
 # phase 6 terraform Git AWX tailscale v3
 
+import {
+  to = azurerm_resource_group.main
+  id = "/subscriptions/adee883c-f49b-4d4a-a5e1-8eedf0d4454c/resourceGroups/rg-hybrid-infra-lab"
+}
+
+import {
+  to = azurerm_user_assigned_identity.awx
+  id = "/subscriptions/adee883c-f49b-4d4a-a5e1-8eedf0d4454c/resourceGroups/rg-hybrid-infra-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-awx"
+}
+
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
   location = var.location
 
+  # Cách remove resource Main khỏi đestroy:
+  # terraform state rm azurerm_resource_group.main
   lifecycle {
     prevent_destroy = true
   }
@@ -19,12 +31,20 @@ resource "azurerm_virtual_network" "main" {
   address_space       = ["10.20.0.0/16"]
 }
 
-resource "azurerm_subnet" "management" {
-  name                 = var.subnet_name
+resource "azurerm_subnet" "automation" {
+  name                 = var.automation_subnet_name
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.20.1.0/24"]
 }
+
+resource "azurerm_subnet" "workload" {
+  name                 = var.workload_subnet_name
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.20.2.0/24"]
+}
+
 
 resource "azurerm_network_security_group" "vm" {
   name                = "nsg-vm"
@@ -33,8 +53,8 @@ resource "azurerm_network_security_group" "vm" {
 
 }
 
-resource "azurerm_subnet_network_security_group_association" "management" {
-  subnet_id                 = azurerm_subnet.management.id
+resource "azurerm_subnet_network_security_group_association" "workload" {
+  subnet_id                 = azurerm_subnet.workload.id
   network_security_group_id = azurerm_network_security_group.vm.id
 }
 
@@ -45,7 +65,7 @@ resource "azurerm_network_interface" "vm" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.management.id
+    subnet_id                     = azurerm_subnet.workload.id
     private_ip_address_allocation = "Dynamic"
   }
 }
