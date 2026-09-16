@@ -7,51 +7,261 @@ packages:
   - git
   - jq
   - tar
+  - firewalld
 
 write_files:
+
+  # ==========================================================
+  # 1. TAILSCALE INSTALL
+  # ==========================================================
   - path: /usr/local/bin/install-tailscale.sh
     permissions: "0755"
     owner: root:root
     content: |
-      #!/bin/bash
+      #!/usr/bin/env bash
       set -euo pipefail
 
       if command -v tailscale >/dev/null 2>&1; then
+        echo "Tailscale already installed."
         exit 0
       fi
 
+      echo "Installing Tailscale..."
       curl -fsSL https://tailscale.com/install.sh | sh
+      tailscale version
 
+  # ==========================================================
+  # 2. TAILSCALE JOIN (WIF / OIDC)
+  # ==========================================================
+  - path: /usr/local/bin/join-tailscale.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      TS_STATUS=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' || true)
+      if [ "$TS_STATUS" = "Running" ]; then
+        echo "Tailscale đã ở trạng thái Running, bỏ qua auto-join."
+        exit 0
+      fi
+
+      echo "Waiting for Azure Managed Identity..."
+      AZURE_JWT_TOKEN=""
+
+      for i in {1..30}; do
+        AZURE_JWT_TOKEN="$(
+          curl -fsS \
+            -H Metadata:true \
+            "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2019-08-01&resource=api://AzureADTokenExchange" \
+            2>/dev/null | jq -r '.access_token // empty'
+        )" || true
+
+        if [ -n "$${AZURE_JWT_TOKEN}" ]; then
+          echo "Azure Managed Identity token acquired."
+          break
+        fi
+
+        echo "Managed Identity not ready. Retry $${i}/30..."
+        sleep 3
+      done
+
+      if [ -z "$${AZURE_JWT_TOKEN}" ]; then
+        echo "WARNING: Failed to obtain Azure Managed Identity token. Skipping join for now..."
+        exit 0
+      fi
+
+      echo "Joining Tailscale..."
+      tailscale up \
+        --id-token="$${AZURE_JWT_TOKEN}" \
+        --client-id="${tailscale_client_id}" \
+        --audience="${tailscale_audience}" \
+        --advertise-tags=tag:awx \
+        --hostname=vm-awx \
+        --accept-routes \
+        --reset || true
+
+      unset AZURE_JWT_TOKEN
+      echo "Tailscale join completed."
+      tailscale status
+
+  # ==========================================================
+  # SYSTEMD SERVICE: AUTO RE-JOIN TAILSCALE ON BOOT
+  # ==========================================================
+  - path: /etc/systemd/system/tailscale-auto-join.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Tailscale Auto-Join with Azure OIDC
+      After=network-online.target tailscaled.service
+      Wants=network-online.target tailscaled.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/join-tailscale.sh
+      RemainAfterExit=yes
+      Restart=on-failure
+      RestartSec=10s
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # ==========================================================
+  # 3. K3S INSTALL & FIX PATH
+  # ==========================================================
   - path: /usr/local/bin/install-k3s.sh
     permissions: "0755"
     owner: root:root
     content: |
-      #!/bin/bash
+      #!/usr/bin/env bash
       set -euo pipefail
 
       if systemctl is-active --quiet k3s; then
+        echo "k3s already running."
         exit 0
       fi
 
+      echo "Installing k3s..."
       curl -sfL https://get.k3s.io | sh -
 
+      if [ -f /usr/local/bin/kubectl ] && [ ! -f /usr/bin/kubectl ]; then
+        ln -sf /usr/local/bin/kubectl /usr/bin/kubectl
+      elif [ -f /usr/local/bin/k3s ] && [ ! -f /usr/bin/kubectl ]; then
+        ln -sf /usr/local/bin/k3s /usr/bin/kubectl
+      fi
+
+      chmod 644 /etc/rancher/k3s/k3s.yaml
+      echo "k3s installation completed."
+
+  # ==========================================================
+  # 4. AWX OPERATOR & AWX RESOURCE INSTALL
+  # ==========================================================
+  - path: /usr/local/bin/install-awx.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      export PATH=$PATH:/usr/local/bin:/usr/bin
+      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+      AWX_NAMESPACE="awx"
+      AWX_DIR="/opt/awx"
+
+      echo "Waiting for k3s..."
+      until systemctl is-active --quiet k3s; do
+        sleep 5
+      done
+
+      echo "Waiting for Kubernetes API..."
+      until kubectl get nodes >/dev/null 2>&1; do
+        sleep 5
+      done
+
+      echo "Waiting for node Ready..."
+      until kubectl get nodes \
+        -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null \
+        | grep -q True
+      do
+        sleep 5
+      done
+
+      mkdir -p "$${AWX_DIR}"
+
+      kubectl get namespace "$${AWX_NAMESPACE}" >/dev/null 2>&1 || \
+        kubectl create namespace "$${AWX_NAMESPACE}"
+
+      # Bước A: Tạo kustomization chỉ để cài AWX Operator
+      cat > "$${AWX_DIR}/kustomization.yaml" <<'EOF'
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+
+      namespace: awx
+
+      resources:
+        - github.com/ansible/awx-operator/config/default?ref=2.19.1
+
+      images:
+        - name: quay.io/ansible/awx-operator
+          newTag: 2.19.1
+        - name: gcr.io/kubebuilder/kube-rbac-proxy
+          newName: quay.io/brancz/kube-rbac-proxy
+          newTag: v0.15.0
+      EOF
+
+      echo "Installing AWX Operator..."
+      kubectl apply -k "$${AWX_DIR}"
+
+      # Bước B: Đợi CRDs đăng ký hoàn tất trên Kubernetes API
+      echo "Waiting for AWX CRD to be registered..."
+      until kubectl get crd awxs.awx.ansible.com >/dev/null 2>&1; do
+        sleep 5
+      done
+
+      # Bước C: Tạo manifest AWX resource với cấu hình Storage & Resource chuẩn
+      cat > "$${AWX_DIR}/awx.yaml" <<'EOF'
+      apiVersion: awx.ansible.com/v1beta1
+      kind: AWX
+
+      metadata:
+        name: awx
+        namespace: awx
+
+      spec:
+        service_type: NodePort
+        nodeport_port: 30080
+        postgres_storage_class: local-path
+        web_resource_requirements:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        task_resource_requirements:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+      EOF
+
+      # Bước D: Apply AWX Instance
+      echo "Installing AWX resource..."
+      kubectl apply -f "$${AWX_DIR}/awx.yaml"
+
+      echo "AWX bootstrap completed."
+
 runcmd:
-  # Ghi log ra file để dễ dàng audit/debug qua Serial Console nếu có sự cố
-  - exec > /var/log/awx-cloud-init.log 2>&1
+  # Tự động mở rộng /var thêm 20GB và / thêm 8GB từ dung lượng đĩa khả dụng
+  - lvextend -L +20G /dev/mapper/rootvg-varlv -r || true
+  - lvextend -L +8G /dev/mapper/rootvg-rootlv -r || true
+  # Tự động tạo Swap file 2GB
+  - dd if=/dev/zero of=/swapfile bs=1M count=2048 || true
+  - chmod 600 /swapfile || true
+  - mkswap /swapfile || true
+  - swapon /swapfile || true
+  - grep -q '/swapfile' /etc/fstab || echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
 
-  - /usr/local/bin/install-tailscale.sh
+  # 1. Cấu hình Firewalld mở port cho K3s & CNI Subnet
+  - systemctl start firewalld || true
+  - systemctl enable firewalld || true
+  - firewall-cmd --zone=trusted --add-source=10.42.0.0/16 --permanent || true
+  - firewall-cmd --add-port=10250/tcp --permanent || true
+  - firewall-cmd --add-port=6443/tcp --permanent || true
+  - firewall-cmd --add-port=80/tcp --permanent || true
+  - firewall-cmd --add-port=443/tcp --permanent || true
+  - firewall-cmd --reload || true
+
+  # 2. Khởi chạy các dịch vụ cài đặt
+  - bash -c 'exec >> /var/log/awx-cloud-init.log 2>&1; /usr/local/bin/install-tailscale.sh || true'
   - systemctl enable --now tailscaled
-
-  # Chờ tailscaled service khởi động sẵn sàng
-  - sleep 3
-
-  # Kích hoạt WIF Authentication với Azure Managed Identity
-  - |
-    tailscale up \
-      --client-id="${tailscale_client_id}" \
-      --audience="${tailscale_audience}" \
-      --advertise-tags=tag:awx \
-      --hostname=vm-awx
-
-  - /usr/local/bin/install-k3s.sh
+  - systemctl daemon-reload
+  - systemctl enable --now tailscale-auto-join.service || true
+  - bash -c 'exec >> /var/log/awx-cloud-init.log 2>&1; /usr/local/bin/install-k3s.sh || true'
   - systemctl enable --now k3s
+  - bash -c 'exec >> /var/log/awx-cloud-init.log 2>&1; /usr/local/bin/install-awx.sh || true'
+

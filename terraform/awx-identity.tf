@@ -8,6 +8,9 @@ resource "azurerm_user_assigned_identity" "awx" {
     managed_by = "terraform"
   }
 
+  # Cách remove tài nguyên awx-identity khỏi destroy:
+  # terraform state rm azurerm_user_assigned_identity.awx
+
   # Khóa bảo vệ: Ngăn chặn Terraform xóa Identity này trong mọi trường hợp
   lifecycle {
     prevent_destroy = true

@@ -17,12 +17,6 @@ variable "vnet_name" {
 
 }
 
-variable "subnet_name" {
-  description = "Subnet name"
-  type        = string
-  default     = "snet-management"
-}
-
 #VM RHEL
 variable "admin_username" {
   description = "Admin username for the VM"
@@ -36,6 +30,19 @@ variable "ssh_public_key" {
   sensitive   = true
 }
 
+variable "tailscale_client_id" {
+  description = "Tailscale federated identity client ID for the AWX VM"
+  type        = string
+  default     = "TNyex2DCUG11CNTRL-kTgsair2Do11CNTRL"
+}
+
+variable "tailscale_audience" {
+  description = "Tailscale federated identity audience for the AWX VM"
+  type        = string
+  default     = "fb60f99c-7a34-4190-8149-302f77469936"
+}
+
+
 # Phase 6 - Config variables
 variable "automation_subnet_name" {
   description = "Automation Subnet name"
@@ -43,14 +50,37 @@ variable "automation_subnet_name" {
   default     = "snet-automation"
 }
 
-variable "tailscale_client_id" {
-  description = "Tailscale federated identity client ID for the AWX VM"
+variable "workload_subnet_name" {
+  description = "Workload Subnet name"
   type        = string
-  default     = "TNyex2DCUG11CNTRL-kFo6dvm88Q11CNTRL"
+  default     = "snet-workload"
 }
 
-variable "tailscale_audience" {
-  description = "Tailscale federated identity audience for the AWX VM"
-  type        = string
-  default     = "api.tailscale.com/TNyex2DCUG11CNTRL-kFo6dvm88Q11CNTRL"
-}
+#variable "awx_vms" {
+#  type = map(object({
+#    size = string
+#    zone = string
+#  }))
+
+
+#  default = {
+#    "vm-awx-01" = {
+#      size = "Standard_D2ls_v6"
+#      zone = "1"
+#    }
+#  }
+#}
+
+#variable "workload_vms" {
+#  type = map(object({
+#    size = string
+#    zone = string
+#  }))
+
+#  default = {
+#    "vm-workload-01" = {
+#      size = "Standard_D2ls_v6"
+#      zone = "1"
+#    }
+#  }
+#}
