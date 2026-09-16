@@ -1,7 +1,7 @@
 # Phase 3 OIDC CI test
 # Phase 4 terraform-apply.yaml test new
 # phase 5 terraform apply check controlled apply v3
-# phase 6 terraform Git AWX tailscale v3
+# phase 6 terraform Git AWX tailscale v5
 
 import {
   to = azurerm_resource_group.main
