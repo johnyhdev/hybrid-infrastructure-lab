@@ -1,26 +1,29 @@
 {
-	"tagOwners": {
-		"tag:awx": ["autogroup:admin"],
-		"tag:ci": ["autogroup:admin"]
-	},
-	"grants": [
-		{
-			"src": ["autogroup:admin"],
-			"dst": ["*"],
-			"ip": ["*"]
-		},
-		{
-			"src": ["tag:ci"],
-			"dst": ["tag:awx"],
-			"ip": ["tcp:22", "tcp:443"]
-		}
-	],
-	"ssh": [
-		{
-			"action": "check",
-			"src": ["autogroup:member"],
-			"dst": ["autogroup:self"],
-			"users": ["autogroup:nonroot", "root"]
-		}
-	]
+  "tagOwners": {
+    "tag:cm": ["autogroup:admin"],
+    "tag:ci": ["autogroup:admin"]
+  },
+
+  "grants": [
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["*"],
+      "ip": ["*"]
+    },
+
+    {
+      "src": ["tag:ci"],
+      "dst": ["tag:cm"],
+      "ip": ["tcp:22", "tcp:443"]
+    }
+  ],
+
+  "ssh": [
+    {
+      "action": "check",
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:self"],
+      "users": ["autogroup:nonroot", "root"]
+    }
+  ]
 }

@@ -1,15 +1,15 @@
-name: Terraform Plan
+name: Terraform Identity Plan
 
 on:
   pull_request:
     paths:
-      - "terraform/**"
-      - ".github/workflows/terraform-plan.yml"
+      - "terraform/01-identity/**"
+      - ".github/workflows/terraform-identity-plan.yml"
       - ".tflint.hcl"
+      - ".checkov.yaml"
 
-# Giúp các workflow chạy nối đuôi nhau thay vì đè lock lên nhau
 concurrency:
-  group: terraform-state-lock
+  group: terraform-identity-state-lock
   cancel-in-progress: false
 
 permissions:
@@ -18,28 +18,28 @@ permissions:
   pull-requests: write
 
 jobs:
+
   terraform-plan:
-    name: Terraform Plan
-    runs-on: ubuntu-latest
-    environment: terraform-plan
+    name: Terraform Identity Plan
+    runs-on: ubuntu-24.04
+
+    environment:
+      name: terraform-plan
 
     defaults:
       run:
-        working-directory: terraform
+        working-directory: terraform/01-identity
 
     env:
       ARM_USE_OIDC: true
       ARM_USE_AZUREAD: true
+
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      #Phase 6 - Add tailscale WIF
-      TF_VAR_tailscale_client_id: ${{ vars.TAILSCALE_AWX_CLIENT_ID }}
-      TF_VAR_tailscale_audience: ${{ vars.TAILSCALE_AWX_AUDIENCE }}
-
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -67,7 +67,7 @@ jobs:
       - name: Checkov Security Scan
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: terraform
+          directory: terraform/01-identity
           framework: terraform
           config_file: .checkov.yaml
 
@@ -78,12 +78,11 @@ jobs:
         run: terraform init
 
       - name: Terraform Format Check
-        run: terraform fmt -check -recursive
+        run: terraform fmt -check
 
       - name: Terraform Validate
         run: terraform validate
 
-      # 1. TẠO FILE PLAN VÀ XUẤT OUTPUT TRỰC TIẾP
       - name: Terraform Plan
         run: terraform plan -no-color -out=tfplan
 
@@ -92,29 +91,30 @@ jobs:
 
       - name: Publish Terraform Plan Summary
         run: |
-          echo "## Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          cat tfplan.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "## Terraform Identity Plan Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          cat tfplan.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create Plan Metadata
         run: |
           cat > plan-metadata.txt <<EOF
           Repository: $GITHUB_REPOSITORY
+          Root Module: terraform/01-identity
           Commit SHA: ${{ github.event.pull_request.head.sha }}
           PR Number: ${{ github.event.pull_request.number }}
           PR Head SHA: ${{ github.event.pull_request.head.sha }}
           Workflow Run ID: ${{ github.run_id }}
           Workflow Run Attempt: ${{ github.run_attempt }}
-          Plan Artifact: terraform-plan-${{ github.event.pull_request.head.sha }}
+          Plan Artifact: terraform-identity-plan-${{ github.event.pull_request.head.sha }}
           EOF
 
       - name: Upload Terraform Plan Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan-${{ github.event.pull_request.head.sha }}
+          name: terraform-identity-plan-${{ github.event.pull_request.head.sha }}
           path: |
-            terraform/tfplan
-            terraform/tfplan.txt
-            terraform/plan-metadata.txt
+            terraform/01-identity/tfplan
+            terraform/01-identity/tfplan.txt
+            terraform/01-identity/plan-metadata.txt
           retention-days: 7
