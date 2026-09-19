@@ -1,0 +1,32 @@
+#cloud-config
+hostname: ${hostname}
+fqdn: ${hostname}
+
+manage_etc_hosts: true
+
+package_update: true
+
+packages:
+  - curl
+  - git
+  - jq
+  - tar
+
+runcmd:
+  # Tự động mở rộng /var thêm 20GB và / thêm 8GB từ dung lượng đĩa khả dụng
+  - lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv -r || true
+  # Tự động tạo Swap file 2GB
+  - dd if=/dev/zero of=/swapfile bs=1M count=2048 || true
+  - chmod 600 /swapfile || true
+  - mkswap /swapfile || true
+  - swapon /swapfile || true
+  - grep -q '/swapfile' /etc/fstab || echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+
+  # 1. Cấu hình Firewalld mở port cho K3s & CNI Subnet
+  - ufw allow ssh
+  - ufw --force enable || true
+
+  # Show hostname
+  - hostnamectl
+
+  - exec > /var/log/workload-cloud-init.log 2>&1

@@ -1,0 +1,75 @@
+name: Terraform VM Resource Destroy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-destroy:
+    name: Terraform VM Resource Destroy
+    runs-on: ubuntu-latest
+
+    environment:
+      name: terraform-destroy
+
+    defaults:
+      run:
+        working-directory: terraform/02-vmresource
+
+    env:
+      ARM_USE_OIDC: true
+      ARM_USE_AZUREAD: true
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      # Cấu hình Tailscale biến riêng cho VM Resource
+      TF_VAR_tailscale_client_id: ${{ vars.TAILSCALE_CM_CLIENT_ID }}
+      TF_VAR_tailscale_audience: ${{ vars.TAILSCALE_CM_AUDIENCE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan Destroy
+        run: |
+          terraform plan -destroy -no-color -out=destroy.tfplan
+          terraform show -no-color destroy.tfplan > destroy-plan.txt
+
+      - name: Publish Destroy Plan Summary
+        run: |
+          echo "## ⚠️ Terraform VM Resource Destroy Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          cat destroy-plan.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Terraform Destroy
+        run: |
+          terraform destroy -auto-approve -no-color | tee destroy-execution.out
+
+      - name: Publish Destroy Result Summary
+        if: always()
+        run: |
+          echo "## 💣 Terraform VM Resource Destroy Execution Result" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          cat destroy-execution.out >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

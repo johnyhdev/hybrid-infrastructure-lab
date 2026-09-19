@@ -1,11 +1,11 @@
-name: Terraform Apply
+name: Terraform Identity Apply
 
 on:
   push:
     branches:
       - main
     paths:
-      - "terraform/**"
+      - "terraform/01-identity/**"
 
 permissions:
   id-token: write
@@ -16,13 +16,13 @@ permissions:
 jobs:
 
   prepare:
-    name: Find Approved Terraform Plan
+    name: Find Approved Terraform Identity Plan
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
       actions: read
-      pull-requests: write # <--- Thêm quyền write cho job prepare
+      pull-requests: write
 
     outputs:
       plan_run_id: ${{ steps.find-plan.outputs.plan_run_id }}
@@ -39,7 +39,7 @@ jobs:
           echo "Main Commit SHA:"
           echo "$GITHUB_SHA"
 
-      - name: Find merged PR
+      - name: Find Merged PR
         id: find-pr
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,7 +59,7 @@ jobs:
           echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "PR_HEAD_SHA=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Find successful Terraform Plan
+      - name: Find Successful Terraform Identity Plan
         id: find-plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -67,7 +67,7 @@ jobs:
         run: |
           RUN_JSON=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow terraform-plan.yml \
+            --workflow terraform-identity-plan.yml \
             --commit "$PR_HEAD_SHA" \
             --status success \
             --limit 10 \
@@ -77,19 +77,19 @@ jobs:
           PLAN_SHA=$(echo "$RUN_JSON" | jq -r '.[0].headSha')
 
           if [ -z "$PLAN_RUN_ID" ] || [ "$PLAN_RUN_ID" = "null" ]; then
-            echo "No successful Terraform Plan run found."
+            echo "No successful Terraform Identity Plan run found."
             echo "Expected SHA: $PR_HEAD_SHA"
             exit 1
           fi
 
           if [ "$PLAN_SHA" != "$PR_HEAD_SHA" ]; then
-            echo "Terraform Plan SHA mismatch."
+            echo "Terraform Identity Plan SHA mismatch."
             echo "Expected: $PR_HEAD_SHA"
             echo "Found:    $PLAN_SHA"
             exit 1
           fi
 
-          ARTIFACT_NAME="terraform-plan-${PR_HEAD_SHA}"
+          ARTIFACT_NAME="terraform-identity-plan-${PR_HEAD_SHA}"
 
           echo "plan_run_id=$PLAN_RUN_ID" >> "$GITHUB_OUTPUT"
           echo "plan_sha=$PLAN_SHA" >> "$GITHUB_OUTPUT"
@@ -109,11 +109,11 @@ jobs:
           echo "Actual SHA:   $ACTUAL_SHA"
 
           if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            echo "ERROR: Terraform Plan SHA mismatch."
+            echo "ERROR: Terraform Identity Plan SHA mismatch."
             exit 1
           fi
 
-          echo "Terraform Plan SHA verified."
+          echo "Terraform Identity Plan SHA verified."
 
       - name: Download Approved Plan for Review
         env:
@@ -128,9 +128,8 @@ jobs:
             --name "$ARTIFACT_NAME" \
             --dir approved-plan
 
-          echo "Approved Terraform plan downloaded for review."
+          echo "Approved Terraform Identity plan downloaded."
           ls -la approved-plan
-
 
       - name: Publish Terraform Plan Summary
         env:
@@ -140,7 +139,7 @@ jobs:
           ARTIFACT_NAME: ${{ steps.find-plan.outputs.artifact_name }}
         run: |
           {
-            echo "## Approved Terraform Plan"
+            echo "## Approved Terraform Identity Plan"
             echo
             echo "| Item | Value |"
             echo "|---|---|"
@@ -161,35 +160,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
         run: |
-          gh pr comment "$PR_NUMBER" --body "🚀 **Terraform Apply Workflow** đã được kích hoạt cho PR này!
+          gh pr comment "$PR_NUMBER" --body "Terraform Identity Apply Workflow has been triggered for this PR.
 
-          Environment \`terraform-apply\` đang tạm dừng để chờ phê duyệt.
-          👉 **[CLICK VÀO ĐÂY ĐỂ REVIEW & APPROVE RUN #${GITHUB_RUN_ID}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})**"
+          Environment \`terraform-identity-apply\` is waiting for approval.
+
+          Review and approve the run here:
+          https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
   apply:
-    name: Apply Approved Terraform Plan
+    name: Apply Approved Terraform Identity Plan
 
     needs: prepare
 
     runs-on: ubuntu-latest
 
     environment:
-      name: terraform-apply
+      name: terraform-identity-apply
+
+    concurrency:
+      group: terraform-identity-state-lock
+      cancel-in-progress: false
 
     defaults:
       run:
-        working-directory: terraform
+        working-directory: terraform/01-identity
 
     env:
       ARM_USE_OIDC: true
       ARM_USE_AZUREAD: true
+
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      #Phase 6 - Add tailscale WIF
-      TF_VAR_tailscale_client_id: ${{ vars.TAILSCALE_AWX_CLIENT_ID }}
-      TF_VAR_tailscale_audience: ${{ vars.TAILSCALE_AWX_AUDIENCE }}
 
     steps:
 
@@ -205,6 +207,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Terraform Version
         run: terraform version
@@ -231,9 +235,12 @@ jobs:
           test -f tfplan
           test -f tfplan.txt
           test -f plan-metadata.txt
+
+          grep -F "Root Module: terraform/01-identity" plan-metadata.txt
           grep -F "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
           grep -F "Plan Artifact: $EXPECTED_ARTIFACT" plan-metadata.txt
-          echo "Terraform plan artifact verification: PASS"
+
+          echo "Terraform Identity plan artifact verification: PASS"
 
       - name: Show Approved Terraform Plan
         run: terraform show -no-color tfplan

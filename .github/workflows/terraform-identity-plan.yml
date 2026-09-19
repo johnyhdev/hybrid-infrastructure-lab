@@ -1,0 +1,120 @@
+name: Terraform Identity Plan
+
+on:
+  pull_request:
+    paths:
+      - "terraform/01-identity/**"
+      - ".github/workflows/terraform-identity-plan.yml"
+      - ".tflint.hcl"
+      - ".checkov.yaml"
+
+concurrency:
+  group: terraform-identity-state-lock
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+
+  terraform-plan:
+    name: Terraform Identity Plan
+    runs-on: ubuntu-latest
+
+    environment:
+      name: terraform-plan
+
+    defaults:
+      run:
+        working-directory: terraform/01-identity
+
+    env:
+      ARM_USE_OIDC: true
+      ARM_USE_AZUREAD: true
+
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v5
+
+      - name: TFLint Init
+        run: tflint --init
+
+      - name: TFLint
+        run: tflint --recursive
+
+      - name: Checkov Security Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/01-identity
+          framework: terraform
+          config_file: .checkov.yaml
+
+      - name: Terraform Version
+        run: terraform version
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Show Terraform Plan
+        run: terraform show -no-color tfplan > tfplan.txt
+
+      - name: Publish Terraform Plan Summary
+        run: |
+          echo "## Terraform Identity Plan Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          cat tfplan.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create Plan Metadata
+        run: |
+          cat > plan-metadata.txt <<EOF
+          Repository: $GITHUB_REPOSITORY
+          Root Module: terraform/01-identity
+          Commit SHA: ${{ github.event.pull_request.head.sha }}
+          PR Number: ${{ github.event.pull_request.number }}
+          PR Head SHA: ${{ github.event.pull_request.head.sha }}
+          Workflow Run ID: ${{ github.run_id }}
+          Workflow Run Attempt: ${{ github.run_attempt }}
+          Plan Artifact: terraform-identity-plan-${{ github.event.pull_request.head.sha }}
+          EOF
+
+      - name: Upload Terraform Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-identity-plan-${{ github.event.pull_request.head.sha }}
+          path: |
+            terraform/01-identity/tfplan
+            terraform/01-identity/tfplan.txt
+            terraform/01-identity/plan-metadata.txt
+          retention-days: 7
