@@ -50,7 +50,7 @@ resource "azurerm_linux_virtual_machine" "workload" {
     publisher = "Canonical"
     offer     = "ubuntu-24_04-lts"
     sku       = "server"
-    version   = "latest"
+    version   = "ubuntu-24.04"
   }
 
   tags = {
