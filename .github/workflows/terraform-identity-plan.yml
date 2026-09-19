@@ -21,7 +21,7 @@ jobs:
 
   terraform-plan:
     name: Terraform Identity Plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     environment:
       name: terraform-plan

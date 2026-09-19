@@ -52,7 +52,7 @@ resource "azurerm_linux_virtual_machine" "cm" {
     publisher = "Canonical"
     offer     = "ubuntu-24_04-lts"
     sku       = "server"
-    version   = "ubuntu-24.04"
+    version   = "latest"
   }
 
   identity {

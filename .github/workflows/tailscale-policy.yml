@@ -20,7 +20,7 @@ permissions:
 jobs:
   policy:
     name: Tailscale Policy GitOps
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: tailscale-policy
 
     steps:
