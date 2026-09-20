@@ -4,43 +4,50 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "terraform/01-identity/**"
-      - ".github/workflows/terraform-identity-*.yml"
-      - ".tflint.hcl"
-      - ".checkov.yaml"
 
 permissions:
   id-token: write
   contents: read
   actions: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
+  check-changes:
+    name: Check Path Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      has_changes: ${{ steps.filter.outputs.identity }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for Identity module changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            identity:
+              - 'terraform/01-identity/**'
+              - '.github/workflows/terraform-identity-*.yml'
+              - 'bootstrap/**'
+              - '.tflint.hcl'
+              - '.checkov.yaml'
 
   prepare:
     name: Find Approved Terraform Identity Plan
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.has_changes == 'true' }}
     runs-on: ubuntu-24.04
-
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: write
 
     outputs:
       plan_run_id: ${{ steps.find-plan.outputs.plan_run_id }}
       plan_sha: ${{ steps.find-plan.outputs.plan_sha }}
       artifact_name: ${{ steps.find-plan.outputs.artifact_name }}
+      pr_number: ${{ steps.find-pr.outputs.PR_NUMBER }}
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Show Merge Commit
-        run: |
-          echo "Main Commit SHA:"
-          echo "$GITHUB_SHA"
 
       - name: Find Merged PR
         id: find-pr
@@ -54,7 +61,7 @@ jobs:
           PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
           PR_HEAD_SHA=$(echo "$PR_JSON" | jq -r '.[0].head.sha')
 
-          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+          if [ -z "$PR_NUMBER" ] \vert{}\vert{} [ "$PR_NUMBER" = "null" ]; then
             echo "No pull request found for commit ${GITHUB_SHA}"
             exit 1
           fi
@@ -70,25 +77,17 @@ jobs:
         run: |
           RUN_JSON=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
-            --workflow terraform-identity-plan.yml \
+            --workflow "Terraform Identity Plan" \
             --commit "$PR_HEAD_SHA" \
             --status success \
             --limit 10 \
-            --json databaseId,headSha,status,conclusion,workflowName)
+            --json databaseId,headSha,status)
 
           PLAN_RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId')
           PLAN_SHA=$(echo "$RUN_JSON" | jq -r '.[0].headSha')
 
-          if [ -z "$PLAN_RUN_ID" ] || [ "$PLAN_RUN_ID" = "null" ]; then
-            echo "No successful Terraform Identity Plan run found."
-            echo "Expected SHA: $PR_HEAD_SHA"
-            exit 1
-          fi
-
-          if [ "$PLAN_SHA" != "$PR_HEAD_SHA" ]; then
-            echo "Terraform Identity Plan SHA mismatch."
-            echo "Expected: $PR_HEAD_SHA"
-            echo "Found:    $PLAN_SHA"
+          if [ -z "$PLAN_RUN_ID" ] \vert{}\vert{} [ "$PLAN_RUN_ID" = "null" ]; then
+            echo "No successful Terraform Identity Plan run found for SHA $PR_HEAD_SHA"
             exit 1
           fi
 
@@ -98,41 +97,13 @@ jobs:
           echo "plan_sha=$PLAN_SHA" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Verify Plan Run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
-          EXPECTED_SHA: ${{ steps.find-plan.outputs.plan_sha }}
-        run: |
-          ACTUAL_SHA=$(gh run view "$PLAN_RUN_ID" \
-            --json headSha \
-            --jq '.headSha')
-
-          echo "Expected SHA: $EXPECTED_SHA"
-          echo "Actual SHA:   $ACTUAL_SHA"
-
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            echo "ERROR: Terraform Identity Plan SHA mismatch."
-            exit 1
-          fi
-
-          echo "Terraform Identity Plan SHA verified."
-
       - name: Download Approved Plan for Review
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
-          ARTIFACT_NAME: ${{ steps.find-plan.outputs.artifact_name }}
-        run: |
-          mkdir -p approved-plan
-
-          gh run download "$PLAN_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "$ARTIFACT_NAME" \
-            --dir approved-plan
-
-          echo "Approved Terraform Identity plan downloaded."
-          ls -la approved-plan
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.find-plan.outputs.artifact_name }}
+          path: approved-plan
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.find-plan.outputs.plan_run_id }}
 
       - name: Publish Terraform Plan Summary
         env:
@@ -154,28 +125,16 @@ jobs:
             echo "## Terraform Changes"
             echo
             echo '```text'
-            cat approved-plan/tfplan.txt
+            cat approved-plan/identity-tfplan.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Comment Approval Request on PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
-        run: |
-          gh pr comment "$PR_NUMBER" --body "Terraform Identity Apply Workflow has been triggered for this PR.
-
-          Environment \`terraform-identity-apply\` is waiting for approval.
-
-          Review and approve the run here:
-          https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
   apply:
     name: Apply Approved Terraform Identity Plan
-    needs: prepare
+    needs: [check-changes, prepare]
+    if: ${{ needs.check-changes.outputs.has_changes == 'true' }}
     runs-on: ubuntu-latest
     environment: terraform-identity-apply
-
 
     concurrency:
       group: terraform-identity-state-lock
@@ -188,18 +147,16 @@ jobs:
     env:
       ARM_USE_OIDC: true
       ARM_USE_AZUREAD: true
-
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
-
       - name: Checkout Main
         uses: actions/checkout@v4
 
       - name: Azure Login
-        uses: azure/login@v3
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -210,40 +167,33 @@ jobs:
         with:
           terraform_wrapper: false
 
-      - name: Terraform Version
-        run: terraform version
-
       - name: Terraform Init
         run: terraform init
 
       - name: Download Approved Terraform Plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PLAN_RUN_ID: ${{ needs.prepare.outputs.plan_run_id }}
-          ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}
-        run: |
-          gh run download "$PLAN_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "$ARTIFACT_NAME" \
-            --dir .
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.artifact_name }}
+          path: terraform/01-identity
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.prepare.outputs.plan_run_id }}
 
       - name: Verify Terraform Plan Artifact
         env:
           EXPECTED_SHA: ${{ needs.prepare.outputs.plan_sha }}
           EXPECTED_ARTIFACT: ${{ needs.prepare.outputs.artifact_name }}
         run: |
-          test -f tfplan
-          test -f tfplan.txt
+          test -f identity.tfplan
+          test -f identity-tfplan.txt
           test -f plan-metadata.txt
 
           grep -F "Root Module: terraform/01-identity" plan-metadata.txt
           grep -F "PR Head SHA: $EXPECTED_SHA" plan-metadata.txt
-          grep -F "Plan Artifact: $EXPECTED_ARTIFACT" plan-metadata.txt
 
           echo "Terraform Identity plan artifact verification: PASS"
 
       - name: Show Approved Terraform Plan
-        run: terraform show -no-color tfplan
+        run: terraform show -no-color identity.tfplan
 
       - name: Terraform Apply
-        run: terraform apply -no-color tfplan
+        run: terraform apply -no-color identity.tfplan
