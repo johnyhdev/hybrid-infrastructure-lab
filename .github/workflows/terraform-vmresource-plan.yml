@@ -23,9 +23,7 @@ jobs:
   terraform-vmresource-plan:
     name: Terraform VM Resource Plan
     runs-on: ubuntu-24.04
-
-    environment:
-      name: terraform-vmresource-plan
+    environment: terraform-vmresource-plan
 
     defaults:
       run:

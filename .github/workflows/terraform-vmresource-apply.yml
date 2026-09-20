@@ -170,13 +170,9 @@ jobs:
 
   apply:
     name: Apply Approved Terraform VM Resource Plan
-
     needs: prepare
-
     runs-on: ubuntu-latest
-
-    environment:
-      name: terraform-vmresource-apply
+    environment: terraform-vmresource-apply
 
     concurrency:
       group: terraform-vmresource-state-lock

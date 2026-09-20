@@ -169,13 +169,10 @@ jobs:
 
   apply:
     name: Apply Approved Terraform Identity Plan
-
     needs: prepare
-
     runs-on: ubuntu-latest
+    environment: terraform-identity-apply
 
-    environment:
-      name: terraform-identity-apply
 
     concurrency:
       group: terraform-identity-state-lock

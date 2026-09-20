@@ -22,9 +22,7 @@ jobs:
   terraform-identity-plan:
     name: Terraform Identity Plan
     runs-on: ubuntu-24.04
-
-    environment:
-      name: terraform-identity-plan
+    environment: terraform-identity-plan
 
     defaults:
       run:

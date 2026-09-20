@@ -11,9 +11,7 @@ jobs:
   terraform-destroy:
     name: Terraform VM Resource Destroy
     runs-on: ubuntu-24.04
-
-    environment:
-      name: terraform-destroy
+    environment: terraform-destroy
 
     defaults:
       run:
