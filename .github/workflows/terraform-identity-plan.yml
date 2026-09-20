@@ -19,12 +19,10 @@ permissions:
 
 jobs:
 
-  terraform-plan:
+  terraform-identity-plan:
     name: Terraform Identity Plan
     runs-on: ubuntu-24.04
-
-    environment:
-      name: terraform-plan
+    environment: terraform-identity-plan
 
     defaults:
       run:
