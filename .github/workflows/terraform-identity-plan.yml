@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "terraform/01-identity/**"
-      - ".github/workflows/terraform-identity-plan.yml"
+      - ".github/workflows/terraform-identity-*.yml"
       - ".tflint.hcl"
       - ".checkov.yaml"
 

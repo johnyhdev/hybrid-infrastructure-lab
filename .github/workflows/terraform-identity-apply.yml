@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - "terraform/01-identity/**"
+      - ".github/workflows/terraform-identity-*.yml"
+      - ".tflint.hcl"
+      - ".checkov.yaml"
 
 permissions:
   id-token: write

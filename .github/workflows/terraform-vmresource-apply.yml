@@ -7,6 +7,9 @@ on:
     paths:
       - "terraform/02-vmresource/**"
       - "bootstrap/**"
+      - ".github/workflows/terraform-vmresource-*.yml"
+      - ".tflint.hcl"
+      - ".checkov.yaml"
 
 permissions:
   id-token: write
