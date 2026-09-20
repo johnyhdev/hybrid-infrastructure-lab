@@ -4,18 +4,15 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "terraform/02-vmresource/**"
-      - "bootstrap/**"
+    # Bỏ paths: ở đây để workflow luôn trigger khi merge
 
 permissions:
   id-token: write
   contents: read
   actions: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
-
   prepare:
     name: Find Approved Terraform VM Resource Plan
     runs-on: ubuntu-24.04
@@ -26,21 +23,36 @@ jobs:
       pull-requests: write
 
     outputs:
+      has_changes: ${{ steps.changes.outputs.src }}
       plan_run_id: ${{ steps.find-plan.outputs.plan_run_id }}
       plan_sha: ${{ steps.find-plan.outputs.plan_sha }}
       artifact_name: ${{ steps.find-plan.outputs.artifact_name }}
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1. Kiểm tra xem Commit vừa Merge có sửa các file VM Resource không
+      - name: Check for VM Resource Changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'terraform/02-vmresource/**'
+              - 'bootstrap/**'
+              - '.github/workflows/terraform-vmresource-*.yml'
+              - '.tflint.hcl'
+              - '.checkov.yaml'
+
       - name: Show Merge Commit
+        if: steps.changes.outputs.src == 'true'
         run: |
           echo "Main Commit SHA:"
           echo "$GITHUB_SHA"
 
       - name: Find Merged PR
+        if: steps.changes.outputs.src == 'true'
         id: find-pr
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,7 +64,7 @@ jobs:
           PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
           PR_HEAD_SHA=$(echo "$PR_JSON" | jq -r '.[0].head.sha')
 
-          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+          if [ -z "$PR_NUMBER" ] \vert{}\vert{} [ "$PR_NUMBER" = "null" ]; then
             echo "No pull request found for commit ${GITHUB_SHA}"
             exit 1
           fi
@@ -61,6 +73,7 @@ jobs:
           echo "PR_HEAD_SHA=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Find Successful Terraform VM Resource Plan
+        if: steps.changes.outputs.src == 'true'
         id: find-plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,7 +90,7 @@ jobs:
           PLAN_RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId')
           PLAN_SHA=$(echo "$RUN_JSON" | jq -r '.[0].headSha')
 
-          if [ -z "$PLAN_RUN_ID" ] || [ "$PLAN_RUN_ID" = "null" ]; then
+          if [ -z "$PLAN_RUN_ID" ] \vert{}\vert{} [ "$PLAN_RUN_ID" = "null" ]; then
             echo "No successful Terraform VM Resource Plan run found."
             echo "Expected SHA: $PR_HEAD_SHA"
             exit 1
@@ -97,6 +110,7 @@ jobs:
           echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Verify Plan Run
+        if: steps.changes.outputs.src == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
@@ -117,6 +131,7 @@ jobs:
           echo "Terraform VM Resource Plan SHA verified."
 
       - name: Download Approved Plan for Review
+        if: steps.changes.outputs.src == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ steps.find-plan.outputs.plan_run_id }}
@@ -133,6 +148,7 @@ jobs:
           ls -la approved-plan
 
       - name: Publish Terraform Plan Summary
+        if: steps.changes.outputs.src == 'true'
         env:
           PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
           PR_HEAD_SHA: ${{ steps.find-pr.outputs.PR_HEAD_SHA }}
@@ -157,6 +173,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment Approval Request on PR
+        if: steps.changes.outputs.src == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
@@ -168,9 +185,15 @@ jobs:
           Review and approve the run here:
           https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+      - name: Skip Notification
+        if: steps.changes.outputs.src == 'false'
+        run: echo "No VM Resource files changed in this merge. Apply skipped safely."
+
   apply:
     name: Apply Approved Terraform VM Resource Plan
     needs: prepare
+    # CHỈ CHẠY khi job prepare xác nhận có file thay đổi (has_changes == 'true')
+    if: needs.prepare.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     environment: terraform-vmresource-apply
 
@@ -196,12 +219,11 @@ jobs:
       TF_VAR_tailscale_cm_audience: ${{ vars.TAILSCALE_CM_AUDIENCE }}
 
     steps:
-
       - name: Checkout Main
         uses: actions/checkout@v4
 
       - name: Azure Login
-        uses: azure/login@v3
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

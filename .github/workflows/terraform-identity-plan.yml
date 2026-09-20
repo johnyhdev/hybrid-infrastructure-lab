@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "terraform/01-identity/**"
-      - ".github/workflows/terraform-identity-plan.yml"
+      - ".github/workflows/terraform-identity-*.yml"
       - ".tflint.hcl"
       - ".checkov.yaml"
 
@@ -18,7 +18,6 @@ permissions:
   pull-requests: write
 
 jobs:
-
   terraform-identity-plan:
     name: Terraform Identity Plan
     runs-on: ubuntu-24.04
@@ -31,18 +30,16 @@ jobs:
     env:
       ARM_USE_OIDC: true
       ARM_USE_AZUREAD: true
-
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Azure Login
-        uses: azure/login@v3
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -54,12 +51,12 @@ jobs:
           terraform_wrapper: false
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v5
+        uses: terraform-linters/setup-tflint@v4
 
       - name: TFLint Init
         run: tflint --init
 
-      - name: TFLint
+      - name: TFLint Check
         run: tflint --recursive
 
       - name: Checkov Security Scan
@@ -81,17 +78,18 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      # Đổi tên file plan thành identity.tfplan để tránh trùng với 02-vmresource
       - name: Terraform Plan
-        run: terraform plan -no-color -out=tfplan
+        run: terraform plan -no-color -out=identity.tfplan
 
       - name: Show Terraform Plan
-        run: terraform show -no-color tfplan > tfplan.txt
+        run: terraform show -no-color identity.tfplan > identity-tfplan.txt
 
       - name: Publish Terraform Plan Summary
         run: |
           echo "## Terraform Identity Plan Summary" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          cat tfplan.txt >> "$GITHUB_STEP_SUMMARY"
+          cat identity-tfplan.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create Plan Metadata
@@ -112,7 +110,7 @@ jobs:
         with:
           name: terraform-identity-plan-${{ github.event.pull_request.head.sha }}
           path: |
-            terraform/01-identity/tfplan
-            terraform/01-identity/tfplan.txt
+            terraform/01-identity/identity.tfplan
+            terraform/01-identity/identity-tfplan.txt
             terraform/01-identity/plan-metadata.txt
           retention-days: 7
