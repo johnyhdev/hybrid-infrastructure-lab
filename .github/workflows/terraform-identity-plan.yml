@@ -2,15 +2,12 @@ name: Terraform Identity Plan
 
 on:
   pull_request:
-    paths:
-      - "terraform/01-identity/**"
-      - ".github/workflows/terraform-identity-*.yml"
-      - ".tflint.hcl"
-      - ".checkov.yaml"
+    branches:
+      - main
 
 concurrency:
-  group: terraform-identity-state-lock
-  cancel-in-progress: false
+  group: terraform-identity-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   id-token: write
@@ -18,8 +15,31 @@ permissions:
   pull-requests: write
 
 jobs:
-  terraform-identity-plan:
+  check-changes:
+    name: Check Path Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      has_changes: ${{ steps.filter.outputs.identity }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for Identity module changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            identity:
+              - 'terraform/01-identity/**'
+              - 'bootstrap/**'
+              - '.github/workflows/terraform-identity-*.yml'
+              - '.tflint.hcl'
+              - '.checkov.yaml'
+
+  plan:
     name: Terraform Identity Plan
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.has_changes == 'true' }}
     runs-on: ubuntu-24.04
     environment: terraform-identity-plan
 
@@ -66,9 +86,6 @@ jobs:
           framework: terraform
           config_file: .checkov.yaml
 
-      - name: Terraform Version
-        run: terraform version
-
       - name: Terraform Init
         run: terraform init
 
@@ -78,7 +95,7 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # Đổi tên file plan thành identity.tfplan để tránh trùng với 02-vmresource
+      # Sử dụng tên file plan duy nhất cho module Identity để tránh đè file
       - name: Terraform Plan
         run: terraform plan -no-color -out=identity.tfplan
 
@@ -101,7 +118,6 @@ jobs:
           PR Number: ${{ github.event.pull_request.number }}
           PR Head SHA: ${{ github.event.pull_request.head.sha }}
           Workflow Run ID: ${{ github.run_id }}
-          Workflow Run Attempt: ${{ github.run_attempt }}
           Plan Artifact: terraform-identity-plan-${{ github.event.pull_request.head.sha }}
           EOF
 
