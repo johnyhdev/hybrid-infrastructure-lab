@@ -82,4 +82,3 @@ resource "azurerm_lb_rule" "https" {
   idle_timeout_in_minutes = 4
   load_distribution       = "Default"
 }
-
