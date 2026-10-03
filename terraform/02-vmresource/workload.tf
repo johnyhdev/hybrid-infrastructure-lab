@@ -37,7 +37,7 @@ resource "azurerm_linux_virtual_machine" "workload" {
 
   custom_data = base64encode(
     templatefile("${path.module}/../../bootstrap/workload-cloud-init.yaml", {
-      hostname = each.key
+      hostname            = each.key
       internal_public_key = tls_private_key.internal_lab_key.public_key_openssh
     })
   )

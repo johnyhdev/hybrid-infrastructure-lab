@@ -25,7 +25,6 @@
   ],
 
 "ssh": [
-    # Cho phép GitHub Runner (tag:ci) SSH trực tiếp vào CM Node (tag:cm) qua Tailscale SSH
     {
       "action": "accept",
       "src": ["tag:ci"],

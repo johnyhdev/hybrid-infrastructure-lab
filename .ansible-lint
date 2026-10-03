@@ -1,0 +1,5 @@
+# .ansible-lint
+profile: min
+role_name_check: false
+rules:
+  formatting: ignore

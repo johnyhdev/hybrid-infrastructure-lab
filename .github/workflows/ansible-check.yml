@@ -29,6 +29,8 @@ jobs:
           ansible-galaxy collection install community.general
 
       - name: Syntax check
+        env:
+          ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles:${{ github.workspace }}/ansible/playbooks/roles
         run: |
           ansible-playbook \
             -i ansible/inventory/hosts.yml \
