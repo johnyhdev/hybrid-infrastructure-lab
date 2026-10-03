@@ -1,5 +1,10 @@
-# .ansible-lint
 profile: min
-role_name_check: false
-rules:
-  formatting: ignore
+
+# Thay thế cho role_name_check: false
+skip_list:
+  - role-name
+  - yaml[formatting]
+
+# Bỏ qua các đường dẫn không cần lint nếu có
+exclude_paths:
+  - .github/
