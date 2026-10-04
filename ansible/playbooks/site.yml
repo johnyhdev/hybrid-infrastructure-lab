@@ -1,4 +1,13 @@
 ---
+- name: Wait for Workload VMs to be fully ready
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait 300s for SSH port (22) to open and Cloud-Init to finish
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 300
+
 - name: Import baseline setup playbook
   ansible.builtin.import_playbook: baseline.yml
 
