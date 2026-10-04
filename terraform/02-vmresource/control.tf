@@ -12,6 +12,11 @@ resource "azurerm_network_interface" "cm" {
   }
 }
 
+resource "tls_private_key" "internal_lab_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
 resource "azurerm_linux_virtual_machine" "cm" {
   for_each = var.control_vms
 
@@ -37,9 +42,12 @@ resource "azurerm_linux_virtual_machine" "cm" {
 
   custom_data = base64encode(
     templatefile("${path.module}/../../bootstrap/cm-cloud-init.yaml", {
+      internal_private_key   = tls_private_key.internal_lab_key.private_key_pem
+      internal_public_key    = tls_private_key.internal_lab_key.public_key_openssh
       tailscale_cm_client_id = var.tailscale_cm_client_id
       tailscale_cm_audience  = var.tailscale_cm_audience
       hostname               = each.key
+      workload_subnet_cidr   = azurerm_subnet.workload.address_prefixes[0]
     })
   )
 
@@ -69,3 +77,11 @@ resource "azurerm_linux_virtual_machine" "cm" {
     managed_by  = "terraform"
   }
 }
+
+# Tự động cấp quyền Reader cho Managed Identity id-cm truy vấn Azure Dynamic Inventory
+resource "azurerm_role_assignment" "cm_reader" {
+  scope                = data.azurerm_resource_group.main.id
+  role_definition_name = "Reader"
+  principal_id         = data.azurerm_user_assigned_identity.cm.principal_id
+}
+

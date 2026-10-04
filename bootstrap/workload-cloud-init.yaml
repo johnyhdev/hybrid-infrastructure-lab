@@ -12,6 +12,9 @@ packages:
   - jq
   - tar
 
+ssh_authorized_keys:
+- ${internal_public_key}
+
 runcmd:
   # Tự động mở rộng /var thêm 20GB và / thêm 8GB từ dung lượng đĩa khả dụng
   - lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv -r || true

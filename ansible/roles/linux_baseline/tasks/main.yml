@@ -1,0 +1,52 @@
+---
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - jq
+      - unzip
+      - vim
+      - htop
+      - net-tools
+      - ca-certificates
+      - gnupg
+      - lsof
+      - rsync
+      - python3
+      - python3-pip
+    state: present
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Ensure admin user exists
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups:
+      - sudo
+    append: true
+    shell: /bin/bash
+    state: present
+
+- name: Configure sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ ansible_user }}"
+    content: "{{ ansible_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+
+- name: Ensure SSH service is enabled
+  ansible.builtin.systemd:
+    name: ssh
+    enabled: true
+    state: started

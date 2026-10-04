@@ -1,0 +1,10 @@
+profile: min
+
+# Thay thế cho role_name_check: false
+skip_list:
+  - role-name
+  - yaml[formatting]
+
+# Bỏ qua các đường dẫn không cần lint nếu có
+exclude_paths:
+  - .github/

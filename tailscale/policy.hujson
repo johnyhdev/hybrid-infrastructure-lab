@@ -4,6 +4,12 @@
     "tag:ci": ["autogroup:admin"]
   },
 
+  "autoApprovers": {
+    "routes": {
+      "10.20.2.0/24": ["tag:cm"]
+    }
+  },
+
   "grants": [
     {
       "src": ["autogroup:admin"],
@@ -13,12 +19,18 @@
 
     {
       "src": ["tag:ci"],
-      "dst": ["tag:cm"],
+      "dst": ["tag:cm", "10.20.2.0/24"],
       "ip": ["tcp:22", "tcp:443"]
     }
   ],
 
-  "ssh": [
+"ssh": [
+    {
+      "action": "accept",
+      "src": ["tag:ci"],
+      "dst": ["tag:cm"],
+      "users": ["azureadmin", "root"]
+    },
     {
       "action": "check",
       "src": ["autogroup:member"],

@@ -63,3 +63,17 @@ resource "azurerm_subnet_network_security_group_association" "workload" {
   subnet_id                 = azurerm_subnet.workload.id
   network_security_group_id = azurerm_network_security_group.workload.id
 }
+
+resource "azurerm_network_security_rule" "workload_ssh_from_automation" {
+  name                        = "allow-ssh-from-automation"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "22"
+  source_address_prefix       = "10.20.1.0/24"
+  destination_address_prefix  = "*"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.workload.name
+}

@@ -1,0 +1,62 @@
+---
+
+- name: Create node exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Download node exporter
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
+    dest: /tmp/node_exporter.tar.gz
+    mode: "0644"
+
+- name: Extract node exporter
+  ansible.builtin.unarchive:
+    src: /tmp/node_exporter.tar.gz
+    dest: /tmp
+    remote_src: true
+
+- name: Install node exporter binary
+  ansible.builtin.copy:
+    src: /tmp/node_exporter-1.9.1.linux-amd64/node_exporter
+    dest: /usr/local/bin/node_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: Restart node exporter
+
+- name: Create node exporter service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus Node Exporter
+      After=network.target
+
+      [Service]
+      User=node_exporter
+      Group=node_exporter
+      ExecStart=/usr/local/bin/node_exporter
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable node exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: true
+    state: started

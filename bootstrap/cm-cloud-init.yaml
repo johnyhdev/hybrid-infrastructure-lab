@@ -10,8 +10,36 @@ packages:
   - git
   - jq
   - tar
+  - python3
+  - python3-pip
+  - python3-venv
 
 write_files:
+
+  # ==========================================================
+  # SSH PRIVATE KEY DÀNH CHO ANSIBLE (CM -> WORKLOAD)
+  # ==========================================================
+  - path: /home/azureadmin/.ssh/vm-cm-workload
+    permissions: "0600"
+    owner: azureadmin:azureadmin
+    content: |
+      ${indent(6, internal_private_key)}
+
+  - path: /home/azureadmin/.ssh/vm-cm-workload.pub
+    permissions: "0644"
+    owner: azureadmin:azureadmin
+    content: |
+      ${internal_public_key}
+
+  # ==========================================================
+  # 0. ENABLE SYSCTL IP FORWARDING FOR SUBNET ROUTER
+  # ==========================================================
+  - path: /etc/sysctl.d/99-tailscale.conf
+    permissions: "0644"
+    owner: root:root
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
 
   # ==========================================================
   # 1. TAILSCALE INSTALL
@@ -33,7 +61,7 @@ write_files:
       tailscale version
 
   # ==========================================================
-  # 2. TAILSCALE JOIN (WIF / OIDC)
+  # 2. TAILSCALE JOIN (WIF / OIDC) WITH SUBNET ROUTER & SSH ENABLED
   # ==========================================================
   - path: /usr/local/bin/join-tailscale.sh
     permissions: "0755"
@@ -51,7 +79,6 @@ write_files:
       echo "Waiting for Azure Managed Identity..."
       AZURE_JWT_TOKEN=""
 
-      # Tăng số lần retry lên 30 (90 giây) để chờ Azure MI gán xong
       for i in {1..30}; do
         AZURE_JWT_TOKEN="$(
           curl -fsS \
@@ -74,14 +101,16 @@ write_files:
         exit 1
       fi
 
-      echo "Joining Tailscale..."
+      echo "Joining Tailscale, advertising Subnet Route and ENABLING TAILSCALE SSH..."
       tailscale up \
         --id-token="$${AZURE_JWT_TOKEN}" \
         --client-id="${tailscale_cm_client_id}" \
         --audience="${tailscale_cm_audience}" \
         --advertise-tags=tag:cm \
         --hostname="$(hostname)" \
+        --advertise-routes="${workload_subnet_cidr}" \
         --accept-routes \
+        --ssh \
         --reset
 
       unset AZURE_JWT_TOKEN
@@ -111,6 +140,9 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
+  # 1. Apply sysctl ip_forwarding ngay lập tức
+  - sysctl -p /etc/sysctl.d/99-tailscale.conf || true
+
   # Mở rộng toàn bộ dung lượng còn trống trên đĩa vào Ubuntu root volume
   - lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv -r || true
   # Tự động tạo Swap file 2GB
@@ -120,8 +152,9 @@ runcmd:
   - swapon /swapfile || true
   - grep -q '/swapfile' /etc/fstab || echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
 
-  # 1. Cấu hình Firewalld mở port cho K3s & CNI Subnet
+  # 2. Cấu hình UFW & IP Forwarding Rule
   - ufw allow ssh
+  - ufw default allow routed || true
   - ufw --force enable || true
 
   - /usr/local/bin/install-tailscale.sh
@@ -129,5 +162,19 @@ runcmd:
 
   - systemctl daemon-reload
   - systemctl enable --now tailscale-auto-join.service
+
+  # ==========================================================
+  # 3. ZTP ENABLERS: AZURE CLI, ANSIBLE & REPO SETUP
+  # ==========================================================
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  - python3 -m venv /opt/ansible-venv
+  - /opt/ansible-venv/bin/pip install --upgrade pip
+  - /opt/ansible-venv/bin/pip install ansible-core
+  - ln -sf /opt/ansible-venv/bin/ansible /usr/local/bin/ansible
+  - ln -sf /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
+  - ln -sf /opt/ansible-venv/bin/ansible-inventory /usr/local/bin/ansible-inventory
+
+  - su - azureadmin -c "ansible-galaxy collection install community.general"
+  - su - azureadmin -c "git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab"
 
   - exec > /var/log/cm-cloud-init.log 2>&1
