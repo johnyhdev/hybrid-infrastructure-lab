@@ -30,25 +30,47 @@ jobs:
           audience: ${{ secrets.TAILSCALE_CI_AUDIENCE }}
           tags: tag:ci
 
-      # SỬA LỖI 1: Poll & Retry chờ vm-cm-01 join Tailscale + Cloud-init hoàn tất SSH
-      - name: Wait for CM Node Readiness
+      # BƯỚC MỚI: Dynamically resolve CM Node IP/Hostname qua Tag:cm
+      - name: Resolve CM Node Hostname
+        id: resolve_node
         run: |
-          echo "Waiting for vm-cm-01 to register on Tailscale MagicDNS and become reachable via SSH..."
+          echo "Resolving CM node targeted with tag:cm..."
           MAX_RETRIES=30
           RETRY_COUNT=0
-          
-          until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 azureadmin@vm-cm-01 "echo 'SSH is ready'" 2>/dev/null; do
+          TARGET_IP=""
+
+          until [ -n "$TARGET_IP" ]; do
+            # Filter trong Tailscale mesh node nào có tag:cm và đang Online (Online = true)
+            TARGET_IP=$(tailscale status --json | jq -r '.Peer[] | select(.Tags[]? == "tag:cm" and .Online == true) | .TailscaleIPs[0]' | head -n 1)
+
+            if [ -n "$TARGET_IP" ] && [ "$TARGET_IP" != "null" ]; then
+              echo "Found CM Node IP: $TARGET_IP"
+              echo "cm_ip=$TARGET_IP" >> $GITHUB_OUTPUT
+              break
+            fi
+
             RETRY_COUNT=$((RETRY_COUNT + 1))
             if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-              echo "ERROR: Timed out waiting for vm-cm-01 after $((MAX_RETRIES * 10)) seconds."
+              echo "ERROR: Timed out waiting for CM Node with tag:cm to register on Tailscale."
               exit 1
             fi
-            echo "vm-cm-01 not ready yet. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
+
+            echo "CM Node with tag:cm not online yet. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
             sleep 10
           done
-          echo "vm-cm-01 is online and SSH is ready!"
 
-      # SỬA LỖI 2: Cấp quyền chmod +x cho run.sh trước khi thực thi
-      - name: Trigger Remote Ansible Execution on CM Node via Tailscale SSH
+      - name: Wait for CM Node SSH Readiness
         run: |
-          ssh -o StrictHostKeyChecking=no azureadmin@vm-cm-01 "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh && ./run.sh"
+          TARGET_IP="${{ steps.resolve_node.outputs.cm_ip }}"
+          echo "Waiting for SSH service readiness on IP: $TARGET_IP..."
+          
+          until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 azureadmin@$TARGET_IP "echo 'SSH is ready'" 2>/dev/null; do
+            echo "SSH service starting up... retrying in 5s"
+            sleep 5
+          done
+          echo "CM Node is online and SSH is ready!"
+
+      - name: Trigger Remote Ansible Execution on CM Node
+        run: |
+          TARGET_IP="${{ steps.resolve_node.outputs.cm_ip }}"
+          ssh -o StrictHostKeyChecking=no azureadmin@$TARGET_IP "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh && ./run.sh"
