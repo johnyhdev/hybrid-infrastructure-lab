@@ -2,7 +2,7 @@ name: Ansible CD Deploy
 
 on:
   workflow_run:
-    workflows: ["Terraform VM Resource Apply"] # Tên 'name:' chính xác của workflow vmresource
+    workflows: ["Terraform VM Resource Apply"]
     types:
       - completed
     branches:
@@ -15,12 +15,14 @@ permissions:
 jobs:
   deploy:
     name: Ansible Continuous Deployment
+    # CHỈ CHẠY khi workflow cha hoàn thành VÀ kết quả là 'success'
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     environment: tailscale-ci
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Connect to Tailscale Mesh Network via OIDC
         uses: tailscale/github-action@v4
