@@ -77,11 +77,3 @@ resource "azurerm_linux_virtual_machine" "cm" {
     managed_by  = "terraform"
   }
 }
-
-# Tự động cấp quyền Reader cho Managed Identity id-cm truy vấn Azure Dynamic Inventory
-resource "azurerm_role_assignment" "cm_reader" {
-  scope                = data.azurerm_resource_group.main.id
-  role_definition_name = "Reader"
-  principal_id         = data.azurerm_user_assigned_identity.cm.principal_id
-}
-
