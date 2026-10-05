@@ -15,22 +15,6 @@ packages:
   - python3-venv
 
 write_files:
-
-  # ==========================================================
-  # SSH PRIVATE KEY DÀNH CHO ANSIBLE (CM -> WORKLOAD)
-  # ==========================================================
-  - path: /home/azureadmin/.ssh/vm-cm-workload
-    permissions: "0600"
-    owner: azureadmin:azureadmin
-    content: |
-      ${indent(6, internal_private_key)}
-
-  - path: /home/azureadmin/.ssh/vm-cm-workload.pub
-    permissions: "0644"
-    owner: azureadmin:azureadmin
-    content: |
-      ${internal_public_key}
-
   # ==========================================================
   # 0. ENABLE SYSCTL IP FORWARDING FOR SUBNET ROUTER
   # ==========================================================
@@ -140,32 +124,42 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-  # 1. Apply sysctl ip_forwarding ngay lập tức
+  # 1. Khởi tạo thư mục SSH cho azureadmin an toàn
+  - mkdir -p /home/azureadmin/.ssh
+  - chmod 700 /home/azureadmin/.ssh
+  - cat <<'EOF' > /home/azureadmin/.ssh/vm-cm-workload
+    ${indent(4, internal_private_key)}
+    EOF
+  - cat <<'EOF' > /home/azureadmin/.ssh/vm-cm-workload.pub
+    ${internal_public_key}
+    EOF
+  - chmod 600 /home/azureadmin/.ssh/vm-cm-workload
+  - chmod 644 /home/azureadmin/.ssh/vm-cm-workload.pub
+  - chown -R azureadmin:azureadmin /home/azureadmin/.ssh || true
+
+  # 2. Apply sysctl ip_forwarding
   - sysctl -p /etc/sysctl.d/99-tailscale.conf || true
 
-  # Mở rộng toàn bộ dung lượng còn trống trên đĩa vào Ubuntu root volume
+  # 3. Mở rộng dung lượng đĩa & Swap
   - lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv -r || true
-  # Tự động tạo Swap file 2GB
   - dd if=/dev/zero of=/swapfile bs=1M count=2048 || true
   - chmod 600 /swapfile || true
   - mkswap /swapfile || true
   - swapon /swapfile || true
   - grep -q '/swapfile' /etc/fstab || echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
 
-  # 2. Cấu hình UFW & IP Forwarding Rule
+  # 4. Cấu hình UFW & IP Forwarding Rule
   - ufw allow ssh
   - ufw default allow routed || true
   - ufw --force enable || true
 
+  # 5. Cài đặt và kích hoạt Tailscale
   - /usr/local/bin/install-tailscale.sh
   - systemctl enable --now tailscaled
-
   - systemctl daemon-reload
   - systemctl enable --now tailscale-auto-join.service
 
-  # ==========================================================
-  # 3. ZTP ENABLERS: AZURE CLI, ANSIBLE & REPO SETUP
-  # ==========================================================
+  # 6. ZTP ENABLERS: AZURE CLI, ANSIBLE & REPO SETUP
   - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
   - python3 -m venv /opt/ansible-venv
   - /opt/ansible-venv/bin/pip install --upgrade pip
@@ -176,5 +170,3 @@ runcmd:
 
   - su - azureadmin -c "ansible-galaxy collection install community.general"
   - su - azureadmin -c "git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab"
-
-  - exec > /var/log/cm-cloud-init.log 2>&1
