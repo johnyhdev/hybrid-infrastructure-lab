@@ -15,7 +15,6 @@ permissions:
 jobs:
   deploy:
     name: Ansible Continuous Deployment
-    # CHỈ CHẠY khi workflow cha hoàn thành VÀ kết quả là 'success'
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     environment: tailscale-ci
@@ -31,6 +30,25 @@ jobs:
           audience: ${{ secrets.TAILSCALE_CI_AUDIENCE }}
           tags: tag:ci
 
+      # SỬA LỖI 1: Poll & Retry chờ vm-cm-01 join Tailscale + Cloud-init hoàn tất SSH
+      - name: Wait for CM Node Readiness
+        run: |
+          echo "Waiting for vm-cm-01 to register on Tailscale MagicDNS and become reachable via SSH..."
+          MAX_RETRIES=30
+          RETRY_COUNT=0
+          
+          until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 azureadmin@vm-cm-01 "echo 'SSH is ready'" 2>/dev/null; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+              echo "ERROR: Timed out waiting for vm-cm-01 after $((MAX_RETRIES * 10)) seconds."
+              exit 1
+            fi
+            echo "vm-cm-01 not ready yet. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
+            sleep 10
+          done
+          echo "vm-cm-01 is online and SSH is ready!"
+
+      # SỬA LỖI 2: Cấp quyền chmod +x cho run.sh trước khi thực thi
       - name: Trigger Remote Ansible Execution on CM Node via Tailscale SSH
         run: |
-          ssh -o StrictHostKeyChecking=no azureadmin@vm-cm-01 "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && ./run.sh"
+          ssh -o StrictHostKeyChecking=no azureadmin@vm-cm-01 "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh && ./run.sh"
