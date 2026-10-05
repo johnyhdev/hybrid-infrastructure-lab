@@ -18,17 +18,18 @@ resource "tls_private_key" "internal_lab_key" {
 }
 
 # 1. Tạo resource terraform_data để theo dõi thay đổi của cloud-init template
+# Dùng hàm sensitive() bọc nội dung templatefile lại
 resource "terraform_data" "cm_cloud_init" {
   for_each = var.control_vms
 
-  input = templatefile("${path.module}/../../bootstrap/cm-cloud-init.yaml", {
+  input = sensitive(templatefile("${path.module}/../../bootstrap/cm-cloud-init.yaml", {
     internal_private_key   = tls_private_key.internal_lab_key.private_key_pem
     internal_public_key    = tls_private_key.internal_lab_key.public_key_openssh
     tailscale_cm_client_id = var.tailscale_cm_client_id
     tailscale_cm_audience  = var.tailscale_cm_audience
     hostname               = each.key
     workload_subnet_cidr   = azurerm_subnet.workload.address_prefixes[0]
-  })
+  }))
 }
 
 resource "azurerm_linux_virtual_machine" "cm" {
