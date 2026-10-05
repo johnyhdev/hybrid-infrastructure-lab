@@ -87,6 +87,7 @@ write_files:
 
       echo "Joining Tailscale, advertising Subnet Route and ENABLING TAILSCALE SSH..."
       tailscale up \
+        --reset \
         --id-token="$${AZURE_JWT_TOKEN}" \
         --client-id="${tailscale_cm_client_id}" \
         --audience="${tailscale_cm_audience}" \
@@ -94,9 +95,7 @@ write_files:
         --hostname="$(hostname)" \
         --advertise-routes="${workload_subnet_cidr}" \
         --accept-routes \
-        --ssh \
-        --force-relogin \
-        --reset
+        --ssh
 
       unset AZURE_JWT_TOKEN
       echo "Tailscale join completed."
