@@ -17,19 +17,20 @@ resource "tls_private_key" "internal_lab_key" {
   rsa_bits  = 4096
 }
 
-# 1. Tạo resource terraform_data để theo dõi thay đổi của cloud-init template
-# Dùng hàm sensitive() bọc nội dung templatefile lại
+# 1. Bọc templatefile vào base64encode() VÀ sensitive()
 resource "terraform_data" "cm_cloud_init" {
   for_each = var.control_vms
 
-  input = sensitive(templatefile("${path.module}/../../bootstrap/cm-cloud-init.yaml", {
-    internal_private_key   = tls_private_key.internal_lab_key.private_key_pem
-    internal_public_key    = tls_private_key.internal_lab_key.public_key_openssh
-    tailscale_cm_client_id = var.tailscale_cm_client_id
-    tailscale_cm_audience  = var.tailscale_cm_audience
-    hostname               = each.key
-    workload_subnet_cidr   = azurerm_subnet.workload.address_prefixes[0]
-  }))
+  input = sensitive(base64encode(
+    templatefile("${path.module}/../../bootstrap/cm-cloud-init.yaml", {
+      internal_private_key   = tls_private_key.internal_lab_key.private_key_pem
+      internal_public_key    = tls_private_key.internal_lab_key.public_key_openssh
+      tailscale_cm_client_id = var.tailscale_cm_client_id
+      tailscale_cm_audience  = var.tailscale_cm_audience
+      hostname               = each.key
+      workload_subnet_cidr   = azurerm_subnet.workload.address_prefixes[0]
+    })
+  ))
 }
 
 resource "azurerm_linux_virtual_machine" "cm" {
@@ -55,10 +56,9 @@ resource "azurerm_linux_virtual_machine" "cm" {
     public_key = var.ssh_public_key
   }
 
-  # 2. Lấy base64 từ output output của terraform_data
-  custom_data = base64encode(terraform_data.cm_cloud_init[each.key].output)
+  # 2. Lấy trực tiếp chuỗi Base64 đã được mã hóa sẵn từ terraform_data
+  custom_data = terraform_data.cm_cloud_init[each.key].output
 
-  # 3. Tham chiếu trực tiếp đến resource terraform_data (Hợp lệ 100% với replace_triggered_by)
   lifecycle {
     replace_triggered_by = [
       terraform_data.cm_cloud_init[each.key]
