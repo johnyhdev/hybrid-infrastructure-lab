@@ -49,6 +49,8 @@ resource "azurerm_linux_virtual_machine" "cm" {
       hostname               = each.key
       workload_subnet_cidr   = azurerm_subnet.workload.address_prefixes[0]
     })
+
+  
   )
 
   os_disk {
