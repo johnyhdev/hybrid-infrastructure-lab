@@ -95,6 +95,7 @@ write_files:
         --advertise-routes="${workload_subnet_cidr}" \
         --accept-routes \
         --ssh \
+        --force-relogin \
         --reset
 
       unset AZURE_JWT_TOKEN
