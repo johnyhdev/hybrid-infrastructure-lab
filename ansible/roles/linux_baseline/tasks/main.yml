@@ -1,5 +1,4 @@
 ---
-
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
@@ -26,7 +25,7 @@
 
 - name: Set timezone
   community.general.timezone:
-    name: "{{ timezone }}"
+    name: "{{ timezone | default('Asia/Ho_Chi_Minh') }}"
 
 - name: Ensure admin user exists
   ansible.builtin.user:
@@ -50,3 +49,33 @@
     name: ssh
     enabled: true
     state: started
+
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Allow SSH in UFW
+  community.general.ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+
+- name: Allow HTTP in UFW from Automation Subnet
+  community.general.ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+    src: '10.20.1.0/24'
+
+- name: Allow Node Exporter (9100) in UFW from Automation Subnet
+  community.general.ufw:
+    rule: allow
+    port: '9100'
+    proto: tcp
+    src: '10.20.1.0/24'
+
+- name: Enable UFW service
+  community.general.ufw:
+    state: enabled
+    policy: deny
