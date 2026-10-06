@@ -168,11 +168,15 @@ runcmd:
   - ln -sf /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
   - ln -sf /opt/ansible-venv/bin/ansible-inventory /usr/local/bin/ansible-inventory
 
-  - su - azureadmin -c "ansible-galaxy collection install community.general"
+  # Dùng sudo -u thay cho su - để tránh trigger systemd logind PAM session fail
+  - sudo -u azureadmin ansible-galaxy collection install community.general
   - |
     if [ ! -d "/home/azureadmin/hybrid-infrastructure-lab" ]; then
-      su - azureadmin -c "git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab"
+      sudo -u azureadmin git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab
     fi
+
+  # Đảm bảo phân quyền đúng cho home folder của azureadmin
+  - chown -R azureadmin:azureadmin /home/azureadmin/
   
   # Tạo file marker báo hiệu Cloud-Init đã hoàn thành 100%
   - touch /var/log/cloud-init-done.tag
