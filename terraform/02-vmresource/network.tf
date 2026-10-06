@@ -77,3 +77,34 @@ resource "azurerm_network_security_rule" "workload_ssh_from_automation" {
   resource_group_name         = data.azurerm_resource_group.main.name
   network_security_group_name = azurerm_network_security_group.workload.name
 }
+
+# Allow HTTP (Port 80) from Automation Subnet to Workload Subnet
+resource "azurerm_network_security_rule" "workload_http_from_automation" {
+  name                        = "allow-http-from-automation"
+  priority                    = 110
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "80"
+  source_address_prefix       = "10.20.1.0/24"
+  destination_address_prefix  = "*"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.workload.name
+}
+
+# Allow Node Exporter Metrics (Port 9100) from Automation Subnet (Prometheus/Vault)
+resource "azurerm_network_security_rule" "workload_node_exporter_from_automation" {
+  name                        = "allow-node-exporter-from-automation"
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "9100"
+  source_address_prefix       = "10.20.1.0/24"
+  destination_address_prefix  = "*"
+  resource_group_name         = data.azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.workload.name
+}
+

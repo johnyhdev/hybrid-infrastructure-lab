@@ -7,15 +7,18 @@ OUTPUT="inventory/generated/azure.yml"
 
 mkdir -p "$(dirname "$OUTPUT")"
 
-# Tự động lấy danh sách tất cả các VM có tag role=control-manager
+CURRENT_HOSTNAME=$(hostname)
+
+# Query lấy tên và IP private chính xác từ Azure CLI
 CM_VMS=$(az vm list \
   --resource-group "$RESOURCE_GROUP" \
+  --show-details \
   --query "[?tags.role=='control-manager'].{name:name, ip:privateIps}" \
   -o json)
 
-# Tự động lấy danh sách tất cả các VM có tag role=workload
 WORKLOAD_VMS=$(az vm list \
   --resource-group "$RESOURCE_GROUP" \
+  --show-details \
   --query "[?tags.role=='workload'].{name:name, ip:privateIps}" \
   -o json)
 
@@ -30,14 +33,24 @@ all:
       hosts:
 EOF
 
-# Parse JSON và ghi các VM thuộc nhóm control vào inventory
+# Parse JSON cho nhóm control
 echo "$CM_VMS" | jq -c '.[]' | while read -r vm; do
   NAME=$(echo "$vm" | jq -r '.name')
-  IP=$(echo "$vm" | jq -r '.ip')
-  cat >> "$OUTPUT" <<EOF
+  # Lấy IP đầu tiên trong chuỗi IP
+  IP=$(echo "$vm" | jq -r '.ip | split(",")[0] // .ip')
+  
+  if [ "$NAME" = "$CURRENT_HOSTNAME" ]; then
+    cat >> "$OUTPUT" <<EOF
+        ${NAME}:
+          ansible_host: ${IP}
+          ansible_connection: local
+EOF
+  else
+    cat >> "$OUTPUT" <<EOF
         ${NAME}:
           ansible_host: ${IP}
 EOF
+  fi
 done
 
 cat >> "$OUTPUT" <<EOF
@@ -45,10 +58,10 @@ cat >> "$OUTPUT" <<EOF
       hosts:
 EOF
 
-# Parse JSON và ghi các VM thuộc nhóm workload vào inventory
+# Parse JSON cho nhóm workload
 echo "$WORKLOAD_VMS" | jq -c '.[]' | while read -r vm; do
   NAME=$(echo "$vm" | jq -r '.name')
-  IP=$(echo "$vm" | jq -r '.ip')
+  IP=$(echo "$vm" | jq -r '.ip | split(",")[0] // .ip')
   cat >> "$OUTPUT" <<EOF
         ${NAME}:
           ansible_host: ${IP}
