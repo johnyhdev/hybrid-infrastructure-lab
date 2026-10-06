@@ -4,6 +4,14 @@ fqdn: ${hostname}
 
 manage_etc_hosts: true
 
+users:
+  - default
+  - name: azureadmin
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${internal_public_key}
+
 package_update: true
 
 packages:
@@ -11,11 +19,6 @@ packages:
   - git
   - jq
   - tar
-
-ssh_authorized_keys:
-- ${internal_public_key}
-
-
 
 runcmd:
   # Tự động tạo Swap file 2GB  
