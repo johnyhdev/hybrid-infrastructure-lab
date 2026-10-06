@@ -51,7 +51,7 @@ variable "control_vms" {
 
   default = {
     "vm-cm-01" = {
-      size = "Standard_D2ls_v6"
+      size = "Standard_D2pls_v6"
       zone = "1"
     }
   }
@@ -79,7 +79,7 @@ variable "workload_vms" {
 
   default = {
     "vm-workload-01" = {
-      size = "Standard_D2ls_v6"
+      size = "Standard_D2pls_v6"
       zone = "1"
     }
   }
