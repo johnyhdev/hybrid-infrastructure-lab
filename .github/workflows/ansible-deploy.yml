@@ -80,4 +80,4 @@ jobs:
       - name: Trigger Remote Ansible Execution on CM Node
         run: |
           TARGET_IP="${{ steps.resolve_node.outputs.cm_ip }}"
-          ssh -o StrictHostKeyChecking=no azureadmin@$TARGET_IP "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh && ./run.sh"
+          ssh -o StrictHostKeyChecking=no azureadmin@$TARGET_IP "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh inventory/generate_inventory.sh && ./run.sh"
