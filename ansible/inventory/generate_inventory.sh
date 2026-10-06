@@ -7,36 +7,53 @@ OUTPUT="inventory/generated/azure.yml"
 
 mkdir -p "$(dirname "$OUTPUT")"
 
-CM_IP="$(
-  az vm list-ip-addresses \
-    --resource-group "$RESOURCE_GROUP" \
-    --name vm-cm-01 \
-    --query "[0].virtualMachine.network.privateIpAddresses[0]" \
-    -o tsv
-)"
+# Tự động lấy danh sách tất cả các VM có tag role=control-manager
+CM_VMS=$(az vm list \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "[?tags.role=='control-manager'].{name:name, ip:privateIps}" \
+  -o json)
 
-WORKLOAD_IP="$(
-  az vm list-ip-addresses \
-    --resource-group "$RESOURCE_GROUP" \
-    --name vm-workload-01 \
-    --query "[0].virtualMachine.network.privateIpAddresses[0]" \
-    -o tsv
-)"
+# Tự động lấy danh sách tất cả các VM có tag role=workload
+WORKLOAD_VMS=$(az vm list \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "[?tags.role=='workload'].{name:name, ip:privateIps}" \
+  -o json)
 
 cat > "$OUTPUT" <<EOF
 all:
+  vars:
+    ansible_user: azureadmin
+    ansible_ssh_private_key_file: ~/.ssh/vm-cm-workload
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
   children:
-
     control:
       hosts:
-        vm-cm-01:
-          ansible_host: ${CM_IP}
+EOF
 
+# Parse JSON và ghi các VM thuộc nhóm control vào inventory
+echo "$CM_VMS" | jq -c '.[]' | while read -r vm; do
+  NAME=$(echo "$vm" | jq -r '.name')
+  IP=$(echo "$vm" | jq -r '.ip')
+  cat >> "$OUTPUT" <<EOF
+        ${NAME}:
+          ansible_host: ${IP}
+EOF
+done
+
+cat >> "$OUTPUT" <<EOF
     workload:
       hosts:
-        vm-workload-01:
-          ansible_host: ${WORKLOAD_IP}
 EOF
+
+# Parse JSON và ghi các VM thuộc nhóm workload vào inventory
+echo "$WORKLOAD_VMS" | jq -c '.[]' | while read -r vm; do
+  NAME=$(echo "$vm" | jq -r '.name')
+  IP=$(echo "$vm" | jq -r '.ip')
+  cat >> "$OUTPUT" <<EOF
+        ${NAME}:
+          ansible_host: ${IP}
+EOF
+done
 
 echo "Inventory generated:"
 cat "$OUTPUT"
