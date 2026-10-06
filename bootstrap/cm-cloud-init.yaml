@@ -2,11 +2,13 @@
 
 hostname: ${hostname}
 fqdn: ${hostname}
+manage_etc_hosts: true
 
 package_update: true
 
 packages:
   - curl
+  - ca-certificates
   - git
   - jq
   - tar
@@ -15,9 +17,10 @@ packages:
   - python3-venv
 
 write_files:
-  # ==========================================================
-  # 0. ENABLE SYSCTL IP FORWARDING FOR SUBNET ROUTER
-  # ==========================================================
+
+  # ------------------------------------------------------------
+  # IP forwarding for Tailscale subnet routing
+  # ------------------------------------------------------------
   - path: /etc/sysctl.d/99-tailscale.conf
     permissions: "0644"
     owner: root:root
@@ -25,9 +28,9 @@ write_files:
       net.ipv4.ip_forward = 1
       net.ipv6.conf.all.forwarding = 1
 
-  # ==========================================================
-  # 1. TAILSCALE INSTALL
-  # ==========================================================
+  # ------------------------------------------------------------
+  # Install Tailscale
+  # ------------------------------------------------------------
   - path: /usr/local/bin/install-tailscale.sh
     permissions: "0755"
     owner: root:root
@@ -37,16 +40,18 @@ write_files:
 
       if command -v tailscale >/dev/null 2>&1; then
         echo "Tailscale already installed."
+        tailscale version
         exit 0
       fi
 
       echo "Installing Tailscale..."
       curl -fsSL https://tailscale.com/install.sh | sh
+
       tailscale version
 
-  # ==========================================================
-  # 2. TAILSCALE JOIN (WIF / OIDC) WITH SUBNET ROUTER & SSH ENABLED
-  # ==========================================================
+  # ------------------------------------------------------------
+  # Join Tailscale using Azure Managed Identity + WIF
+  # ------------------------------------------------------------
   - path: /usr/local/bin/join-tailscale.sh
     permissions: "0755"
     owner: root:root
@@ -54,16 +59,23 @@ write_files:
       #!/usr/bin/env bash
       set -euo pipefail
 
-      TS_STATUS=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' || true)
-      if [ "$TS_STATUS" = "Running" ]; then
-        echo "Tailscale đã ở trạng thái Running, bỏ qua auto-join."
+      TS_STATUS="$(
+        tailscale status --json 2>/dev/null \
+        | jq -r '.BackendState // empty' \
+        || true
+      )"
+
+      if [ "$${TS_STATUS}" = "Running" ]; then
+        echo "Tailscale is already Running."
         exit 0
       fi
 
       echo "Waiting for Azure Managed Identity..."
+
       AZURE_JWT_TOKEN=""
 
       for i in {1..30}; do
+
         AZURE_JWT_TOKEN="$(
           curl -fsS \
             -H Metadata:true \
@@ -85,7 +97,10 @@ write_files:
         exit 1
       fi
 
-      echo "Joining Tailscale, advertising Subnet Route and ENABLING TAILSCALE SSH..."
+      echo "Joining Tailscale..."
+      echo "Advertising workload subnet route..."
+      echo "Enabling Tailscale SSH..."
+
       tailscale up \
         --reset \
         --id-token="$${AZURE_JWT_TOKEN}" \
@@ -98,12 +113,14 @@ write_files:
         --ssh
 
       unset AZURE_JWT_TOKEN
+
       echo "Tailscale join completed."
+
       tailscale status
 
-  # ==========================================================
-  # SYSTEMD SERVICE: AUTO RE-JOIN TAILSCALE ON BOOT
-  # ==========================================================
+  # ------------------------------------------------------------
+  # Automatically join Tailscale after tailscaled is ready
+  # ------------------------------------------------------------
   - path: /etc/systemd/system/tailscale-auto-join.service
     permissions: "0644"
     owner: root:root
@@ -124,49 +141,177 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-  # 1. Khởi tạo thư mục SSH cho azureadmin
-  - mkdir -p /home/azureadmin/.ssh
-  - chmod 700 /home/azureadmin/.ssh
-  - bash -c 'echo "${internal_private_key_b64}" | base64 -d > /home/azureadmin/.ssh/vm-cm-workload'
-  - bash -c 'echo "${internal_public_key}" > /home/azureadmin/.ssh/vm-cm-workload.pub'
-  - chmod 600 /home/azureadmin/.ssh/vm-cm-workload
-  - chmod 644 /home/azureadmin/.ssh/vm-cm-workload.pub
-  - chown -R azureadmin:azureadmin /home/azureadmin/.ssh
 
-  # 2. Apply sysctl ip_forwarding
-  - sysctl -p /etc/sysctl.d/99-tailscale.conf || true
+  # ------------------------------------------------------------
+  # 1. Prepare CM -> workload SSH key
+  # ------------------------------------------------------------
+  - |
+    set -e
 
-  # 3. Tạo Swap 2GB
-  - fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 || true
-  - chmod 600 /swapfile || true
-  - mkswap /swapfile || true
-  - swapon /swapfile || true
-  - bash -c "grep -q '/swapfile' /etc/fstab || echo '/swapfile swap swap defaults 0 0' >> /etc/fstab"
+    mkdir -p /home/azureadmin/.ssh
+    chmod 700 /home/azureadmin/.ssh
 
-  # 4. Cấu hình UFW
-  - ufw allow ssh
-  - ufw default allow routed || true
-  - ufw --force enable || true
+    echo "${internal_private_key_b64}" \
+      | base64 -d \
+      > /home/azureadmin/.ssh/vm-cm-workload
 
-  # 5. Cài đặt và kích hoạt Tailscale
-  - /usr/local/bin/install-tailscale.sh
-  - systemctl enable --now tailscaled
-  - systemctl daemon-reload
-  - systemctl enable --now tailscale-auto-join.service
+    echo "${internal_public_key}" \
+      > /home/azureadmin/.ssh/vm-cm-workload.pub
 
-  # 6. ZTP ENABLERS: AZURE CLI, ANSIBLE & REPO SETUP
-  - bash -c 'while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done'
-  - bash -c 'export DEBIAN_FRONTEND=noninteractive && curl -sL https://aka.ms/InstallAzureCLIDeb | bash'
-  - python3 -m venv /opt/ansible-venv
-  - /opt/ansible-venv/bin/pip install --upgrade pip
-  - /opt/ansible-venv/bin/pip install ansible-core
-  - ln -sf /opt/ansible-venv/bin/ansible /usr/local/bin/ansible
-  - ln -sf /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
-  - ln -sf /opt/ansible-venv/bin/ansible-inventory /usr/local/bin/ansible-inventory
+    chmod 600 /home/azureadmin/.ssh/vm-cm-workload
+    chmod 644 /home/azureadmin/.ssh/vm-cm-workload.pub
 
-  # Dùng sudo -u để cài collection & clone repo
-  - sudo -u azureadmin ansible-galaxy collection install community.general
-  - bash -c 'if [ ! -d "/home/azureadmin/hybrid-infrastructure-lab" ]; then sudo -u azureadmin git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab; fi'
+    chown -R azureadmin:azureadmin /home/azureadmin/.ssh
 
-  - chown -R azureadmin:azureadmin /home/azureadmin/
-  - touch /var/log/cloud-init-done.tag
+
+  # ------------------------------------------------------------
+  # 2. Enable IP forwarding
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    sysctl --system
+
+
+  # ------------------------------------------------------------
+  # 3. Create 2 GB swap
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    if [ ! -f /swapfile ]; then
+      fallocate -l 2G /swapfile \
+        || dd if=/dev/zero of=/swapfile bs=1M count=2048
+    fi
+
+    chmod 600 /swapfile
+
+    if ! swapon --show | grep -q "/swapfile"; then
+      mkswap /swapfile || true
+      swapon /swapfile
+    fi
+
+    if ! grep -q "^/swapfile " /etc/fstab; then
+      echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
+    fi
+
+
+  # ------------------------------------------------------------
+  # 4. Configure UFW
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    ufw allow ssh
+    ufw default allow routed
+    ufw --force enable
+
+
+  # ------------------------------------------------------------
+  # 5. Install and start Tailscale
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    /usr/local/bin/install-tailscale.sh
+
+    systemctl enable --now tailscaled
+
+
+  # ------------------------------------------------------------
+  # 6. Enable automatic Tailscale join
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    systemctl daemon-reload
+
+    systemctl enable --now tailscale-auto-join.service
+
+
+  # ------------------------------------------------------------
+  # 7. Wait for APT and install Azure CLI
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+      echo "Waiting for dpkg lock..."
+      sleep 2
+    done
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+
+  # ------------------------------------------------------------
+  # 8. Create Ansible virtual environment
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    python3 -m venv /opt/ansible-venv
+
+    /opt/ansible-venv/bin/pip install --upgrade pip
+
+    /opt/ansible-venv/bin/pip install ansible-core
+
+
+  # ------------------------------------------------------------
+  # 9. Make Ansible commands available globally
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    ln -sf \
+      /opt/ansible-venv/bin/ansible \
+      /usr/local/bin/ansible
+
+    ln -sf \
+      /opt/ansible-venv/bin/ansible-playbook \
+      /usr/local/bin/ansible-playbook
+
+    ln -sf \
+      /opt/ansible-venv/bin/ansible-inventory \
+      /usr/local/bin/ansible-inventory
+
+    ln -sf \
+      /opt/ansible-venv/bin/ansible-galaxy \
+      /usr/local/bin/ansible-galaxy
+
+
+  # ------------------------------------------------------------
+  # 10. Install Ansible collection
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    sudo -u azureadmin \
+      /opt/ansible-venv/bin/ansible-galaxy \
+      collection install community.general
+
+
+  # ------------------------------------------------------------
+  # 11. Clone infrastructure repository
+  # ------------------------------------------------------------
+  - |
+    set -e
+
+    if [ ! -d "/home/azureadmin/hybrid-infrastructure-lab" ]; then
+
+      sudo -u azureadmin \
+        git clone \
+        https://github.com/johnyhdev/hybrid-infrastructure-lab.git \
+        /home/azureadmin/hybrid-infrastructure-lab
+
+    fi
+
+    chown -R azureadmin:azureadmin /home/azureadmin/
+
+
+  # ------------------------------------------------------------
+  # 12. Cloud-init completion marker
+  # ------------------------------------------------------------
+  - |
+    touch /var/log/cloud-init-done.tag
