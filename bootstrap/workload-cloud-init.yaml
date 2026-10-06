@@ -21,7 +21,7 @@ packages:
   - tar
 
 runcmd:
-  # Tự động tạo Swap file 2GB
+  # Tự động tạo Swap file 2GB  
   - dd if=/dev/zero of=/swapfile bs=1M count=2048 || true
   - chmod 600 /swapfile || true
   - mkswap /swapfile || true
