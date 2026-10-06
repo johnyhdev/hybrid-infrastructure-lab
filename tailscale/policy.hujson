@@ -27,7 +27,7 @@
 "ssh": [
     {
       "action": "accept",
-      "src": ["tag:ci"],
+      "src": ["autogroup:admin", "tag:ci"],
       "dst": ["tag:cm"],
       "users": ["azureadmin", "root"]
     },

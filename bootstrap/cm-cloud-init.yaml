@@ -124,18 +124,14 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-  # 1. Khởi tạo thư mục SSH cho azureadmin an toàn
+  # 1. Khởi tạo thư mục SSH cho azureadmin
   - mkdir -p /home/azureadmin/.ssh
   - chmod 700 /home/azureadmin/.ssh
-  - cat <<'EOF' > /home/azureadmin/.ssh/vm-cm-workload
-    ${indent(4, internal_private_key)}
-    EOF
-  - cat <<'EOF' > /home/azureadmin/.ssh/vm-cm-workload.pub
-    ${internal_public_key}
-    EOF
+  - echo "${internal_private_key_b64}" | base64 -d > /home/azureadmin/.ssh/vm-cm-workload
+  - echo "${internal_public_key}" > /home/azureadmin/.ssh/vm-cm-workload.pub
   - chmod 600 /home/azureadmin/.ssh/vm-cm-workload
   - chmod 644 /home/azureadmin/.ssh/vm-cm-workload.pub
-  - chown -R azureadmin:azureadmin /home/azureadmin/.ssh || true
+  - chown -R azureadmin:azureadmin /home/azureadmin/.ssh
 
   # 2. Apply sysctl ip_forwarding
   - sysctl -p /etc/sysctl.d/99-tailscale.conf || true
