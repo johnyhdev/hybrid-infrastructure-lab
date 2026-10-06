@@ -22,9 +22,12 @@ echo "========================================"
 MAX_RETRIES=15
 RETRY_COUNT=0
 
-until ansible all \
+# Chỉ ping tới nhóm 'workload', thêm cờ SSH args để tránh bị kẹt host key prompt
+until ansible workload \
   -i inventory/generated/azure.yml \
   --private-key ~/.ssh/vm-cm-workload \
+  -u azureadmin \
+  --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
   -m ping -o >/dev/null 2>&1; do
 
   RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -47,4 +50,5 @@ echo "========================================"
 ansible-playbook \
   -i inventory/generated/azure.yml \
   playbooks/site.yml \
-  --private-key ~/.ssh/vm-cm-workload
+  --private-key ~/.ssh/vm-cm-workload \
+  --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
