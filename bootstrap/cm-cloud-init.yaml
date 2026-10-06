@@ -115,119 +115,54 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-
-  # ------------------------------------------------------------
   # 1. Prepare CM -> workload SSH key
-  # ------------------------------------------------------------
-  - |
-    set -e
-    mkdir -p /home/azureadmin/.ssh
-    chmod 700 /home/azureadmin/.ssh
-    echo "${internal_private_key_b64}" | base64 -d > /home/azureadmin/.ssh/vm-cm-workload
-    echo "${internal_public_key}" > /home/azureadmin/.ssh/vm-cm-workload.pub
-    chmod 600 /home/azureadmin/.ssh/vm-cm-workload
-    chmod 644 /home/azureadmin/.ssh/vm-cm-workload.pub
-    chown -R azureadmin:azureadmin /home/azureadmin/.ssh
+  - [ sh, -c, "mkdir -p /home/azureadmin/.ssh && chmod 700 /home/azureadmin/.ssh" ]
+  - [ sh, -c, "echo '${internal_private_key_b64}' | base64 -d > /home/azureadmin/.ssh/vm-cm-workload" ]
+  - [ sh, -c, "echo '${internal_public_key}' > /home/azureadmin/.ssh/vm-cm-workload.pub" ]
+  - [ sh, -c, "chmod 600 /home/azureadmin/.ssh/vm-cm-workload && chmod 644 /home/azureadmin/.ssh/vm-cm-workload.pub" ]
+  - [ sh, -c, "chown -R azureadmin:azureadmin /home/azureadmin/.ssh" ]
 
-  # ------------------------------------------------------------
   # 2. Enable IP forwarding
-  # ------------------------------------------------------------
-  - |
-    set -e
-    sysctl --system
+  - [ sysctl, --system ]
 
-  # ------------------------------------------------------------
   # 3. Create 2 GB swap
-  # ------------------------------------------------------------
-  - |
-    set -e
-    if [ ! -f /swapfile ]; then
-      fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
-    fi
-    chmod 600 /swapfile
-    if ! swapon --show | grep -q '/swapfile'; then
-      mkswap /swapfile || true
-      swapon /swapfile
-    fi
-    if ! grep -q '^/swapfile ' /etc/fstab; then
-      echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-    fi
+  - [ sh, -c, "if [ ! -f /swapfile ]; then fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048; fi" ]
+  - [ sh, -c, "chmod 600 /swapfile" ]
+  - [ sh, -c, "if ! swapon --show | grep -q '/swapfile'; then mkswap /swapfile || true; swapon /swapfile; fi" ]
+  - [ sh, -c, "if ! grep -q '^/swapfile ' /etc/fstab; then echo '/swapfile swap swap defaults 0 0' >> /etc/fstab; fi" ]
 
-  # ------------------------------------------------------------
   # 4. Configure UFW
-  # ------------------------------------------------------------
-  - |
-    set -e
-    ufw allow ssh
-    ufw default allow routed
-    ufw --force enable
+  - [ ufw, allow, ssh ]
+  - [ ufw, default, allow, routed ]
+  - [ ufw, --force, enable ]
 
-  # ------------------------------------------------------------
-  # 5. Install and start Tailscale
-  # ------------------------------------------------------------
-  - |
-    set -e
-    /usr/local/bin/install-tailscale.sh
-    systemctl enable --now tailscaled
+  # 5. Install & enable Tailscale
+  - [ /usr/local/bin/install-tailscale.sh ]
+  - [ systemctl, enable, --now, tailscaled ]
 
-  # ------------------------------------------------------------
   # 6. Enable automatic Tailscale join
-  # ------------------------------------------------------------
-  - |
-    set -e
-    systemctl daemon-reload
-    systemctl enable --now tailscale-auto-join.service
+  - [ systemctl, daemon-reload ]
+  - [ systemctl, enable, --now, tailscale-auto-join.service ]
 
-  # ------------------------------------------------------------
-  # 7. Wait for APT and install Azure CLI
-  # ------------------------------------------------------------
-  - |
-    set -e
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-      echo "Waiting for dpkg lock..."
-      sleep 2
-    done
-    export DEBIAN_FRONTEND=noninteractive
-    curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  # 7. Install Azure CLI
+  - [ sh, -c, "while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done" ]
+  - [ sh, -c, "export DEBIAN_FRONTEND=noninteractive && curl -sL https://aka.ms/InstallAzureCLIDeb | bash" ]
 
-  # ------------------------------------------------------------
-  # 8. Create Ansible virtual environment
-  # ------------------------------------------------------------
-  - |
-    set -e
-    python3 -m venv /opt/ansible-venv
-    /opt/ansible-venv/bin/pip install --upgrade pip
-    /opt/ansible-venv/bin/pip install ansible-core
+  # 8 & 9. Create Ansible venv & global symlinks
+  - [ python3, -m, venv, /opt/ansible-venv ]
+  - [ /opt/ansible-venv/bin/pip, install, --upgrade, pip ]
+  - [ /opt/ansible-venv/bin/pip, install, ansible-core ]
+  - [ ln, -sf, /opt/ansible-venv/bin/ansible, /usr/local/bin/ansible ]
+  - [ ln, -sf, /opt/ansible-venv/bin/ansible-playbook, /usr/local/bin/ansible-playbook ]
+  - [ ln, -sf, /opt/ansible-venv/bin/ansible-inventory, /usr/local/bin/ansible-inventory ]
+  - [ ln, -sf, /opt/ansible-venv/bin/ansible-galaxy, /usr/local/bin/ansible-galaxy ]
 
-  # ------------------------------------------------------------
-  # 9. Make Ansible commands available globally
-  # ------------------------------------------------------------
-  - |
-    set -e
-    ln -sf /opt/ansible-venv/bin/ansible /usr/local/bin/ansible
-    ln -sf /opt/ansible-venv/bin/ansible-playbook /usr/local/bin/ansible-playbook
-    ln -sf /opt/ansible-venv/bin/ansible-inventory /usr/local/bin/ansible-inventory
-    ln -sf /opt/ansible-venv/bin/ansible-galaxy /usr/local/bin/ansible-galaxy
-
-  # ------------------------------------------------------------
   # 10. Install Ansible collection
-  # ------------------------------------------------------------
-  - |
-    set -e
-    sudo -u azureadmin /opt/ansible-venv/bin/ansible-galaxy collection install community.general
+  - [ sudo, -u, azureadmin, /opt/ansible-venv/bin/ansible-galaxy, collection, install, community.general ]
 
-  # ------------------------------------------------------------
   # 11. Clone infrastructure repository
-  # ------------------------------------------------------------
-  - |
-    set -e
-    if [ ! -d "/home/azureadmin/hybrid-infrastructure-lab" ]; then
-      sudo -u azureadmin git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab
-    fi
-    chown -R azureadmin:azureadmin /home/azureadmin/
+  - [ sh, -c, "if [ ! -d /home/azureadmin/hybrid-infrastructure-lab ]; then sudo -u azureadmin git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab; fi" ]
+  - [ chown, -R, "azureadmin:azureadmin", /home/azureadmin/ ]
 
-  # ------------------------------------------------------------
-  # 12. Cloud-init completion marker
-  # ------------------------------------------------------------
-  - |
-    touch /var/log/cloud-init-done.tag
+  # 12. Completion marker
+  - [ touch, /var/log/cloud-init-done.tag ]
