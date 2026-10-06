@@ -23,7 +23,7 @@ resource "terraform_data" "cm_cloud_init" {
 
   input = sensitive(base64encode(
     templatefile("${path.module}/../../bootstrap/cm-cloud-init.yaml", {
-      internal_private_key   = base64encode(tls_private_key.internal_lab_key.private_key_pem)
+      internal_private_key_b64   = base64encode(tls_private_key.internal_lab_key.private_key_pem)
       internal_public_key    = tls_private_key.internal_lab_key.public_key_openssh
       tailscale_cm_client_id = var.tailscale_cm_client_id
       tailscale_cm_audience  = var.tailscale_cm_audience
