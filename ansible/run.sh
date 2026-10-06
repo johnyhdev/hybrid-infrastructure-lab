@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+echo "Logging in to Azure CLI via Managed Identity..."
+az login --identity > /dev/null
+
 cd "$(dirname "$0")"
 
 echo "========================================"
