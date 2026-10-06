@@ -169,4 +169,10 @@ runcmd:
   - ln -sf /opt/ansible-venv/bin/ansible-inventory /usr/local/bin/ansible-inventory
 
   - su - azureadmin -c "ansible-galaxy collection install community.general"
-  - su - azureadmin -c "git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab"
+  - |
+    if [ ! -d "/home/azureadmin/hybrid-infrastructure-lab" ]; then
+      su - azureadmin -c "git clone https://github.com/johnyhdev/hybrid-infrastructure-lab.git /home/azureadmin/hybrid-infrastructure-lab"
+    fi
+  
+  # Tạo file marker báo hiệu Cloud-Init đã hoàn thành 100%
+  - touch /var/log/cloud-init-done.tag
