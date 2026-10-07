@@ -9,7 +9,7 @@
 # Tự động chọn đúng arch (amd64 hoặc arm64) dựa theo facts của VM
 - name: Download node exporter
   ansible.builtin.get_url:
-    url: "https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}.tar.gz"
+    url: "https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}.tar.gz"
     dest: /tmp/node_exporter.tar.gz
     mode: "0644"
 
@@ -21,7 +21,7 @@
 
 - name: Install node exporter binary
   ansible.builtin.copy:
-    src: "/tmp/node_exporter-1.9.1.linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}/node_exporter"
+    src: "/tmp/node_exporter-1.9.1.linux-{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}/node_exporter"
     dest: /usr/local/bin/node_exporter
     owner: root
     group: root
