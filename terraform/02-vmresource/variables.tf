@@ -28,7 +28,7 @@ variable "workload_subnet_name" {
   default     = "snet-workload"
 }
 
-#VM RHEL
+#VM Ubuntu
 variable "admin_username" {
   description = "Admin username for the VM"
   type        = string
@@ -51,7 +51,7 @@ variable "control_vms" {
 
   default = {
     "vm-cm-01" = {
-      size = "Standard_D2pls_v6"
+      size = "Standard_D2ps_v6"
       zone = "1"
     }
   }
@@ -79,7 +79,7 @@ variable "workload_vms" {
 
   default = {
     "vm-workload-01" = {
-      size = "Standard_D2pls_v6"
+      size = "Standard_D2ps_v6"
       zone = "1"
     }
   }
