@@ -1,5 +1,4 @@
 ---
-
 - name: Create node exporter user
   ansible.builtin.user:
     name: node_exporter
@@ -7,10 +6,10 @@
     shell: /usr/sbin/nologin
     create_home: false
 
+# Tự động chọn đúng arch (amd64 hoặc arm64) dựa theo facts của VM
 - name: Download node exporter
   ansible.builtin.get_url:
-    url: >-
-      https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
+    url: "https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}.tar.gz"
     dest: /tmp/node_exporter.tar.gz
     mode: "0644"
 
@@ -22,7 +21,7 @@
 
 - name: Install node exporter binary
   ansible.builtin.copy:
-    src: /tmp/node_exporter-1.9.1.linux-amd64/node_exporter
+    src: "/tmp/node_exporter-1.9.1.linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}/node_exporter"
     dest: /usr/local/bin/node_exporter
     owner: root
     group: root
@@ -30,7 +29,7 @@
     remote_src: true
   notify: Restart node exporter
 
-- name: Create node exporter service
+- name: Create node exporter service with optimized collectors
   ansible.builtin.copy:
     dest: /etc/systemd/system/node_exporter.service
     owner: root
@@ -44,12 +43,24 @@
       [Service]
       User=node_exporter
       Group=node_exporter
-      ExecStart=/usr/local/bin/node_exporter
+      ExecStart=/usr/local/bin/node_exporter \
+        --web.listen-address=":9100" \
+        --collector.disable-defaults \
+        --collector.cpu \
+        --collector.meminfo \
+        --collector.diskstats \
+        --collector.filesystem \
+        --collector.netdev \
+        --collector.loadavg \
+        --collector.stat \
+        --collector.time \
+        --collector.uname
       Restart=on-failure
       RestartSec=5
 
       [Install]
       WantedBy=multi-user.target
+  notify: Restart node exporter
 
 - name: Reload systemd
   ansible.builtin.systemd:
