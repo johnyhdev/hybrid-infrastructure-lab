@@ -34,8 +34,16 @@
               self.end_headers()
               self.wfile.write(body)
 
+          # Bổ sung do_HEAD để xử lý request curl -I hoặc Health Check
+          def do_HEAD(self):
+              self.send_response(200)
+              self.send_header("Content-Type", "text/plain")
+              self.send_header("Content-Length", "44")
+              self.end_headers()
+
       server = HTTPServer(("127.0.0.1", 8080), Handler)
       server.serve_forever()
+  notify: Restart sample app
 
 - name: Create systemd service
   ansible.builtin.copy:
