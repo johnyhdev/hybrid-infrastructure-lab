@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-    # Bỏ paths: ở đây để workflow luôn trigger khi merge
+    # Run on every push to main; the job filters paths after it starts.
 
 permissions:
   id-token: write
@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. Kiểm tra xem Commit vừa Merge có sửa các file VM Resource không
+      # 1. Check whether the merged commit changed VM resource files.
       - name: Check for VM Resource Changes
         uses: dorny/paths-filter@v3
         id: changes
@@ -192,7 +192,7 @@ jobs:
   apply:
     name: Apply Approved Terraform VM Resource Plan
     needs: prepare
-    # CHỈ CHẠY khi job prepare xác nhận có file thay đổi (has_changes == 'true')
+    # Run only when the prepare job confirms relevant changes (has_changes == 'true').
     if: needs.prepare.outputs.has_changes == 'true'
     runs-on: ubuntu-24.04
     environment: terraform-vmresource-apply
