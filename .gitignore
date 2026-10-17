@@ -25,6 +25,9 @@ credentials.json
 .vscode/
 .idea/
 
+# Generated security scan reports may expose infrastructure details
+checkov-result.json/
+
 # OS
 .DS_Store
 Thumbs.db

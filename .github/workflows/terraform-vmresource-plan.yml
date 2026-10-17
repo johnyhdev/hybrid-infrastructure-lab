@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - main
-    # Bỏ paths: ở đây để workflow luôn trigger, giúp GitHub Branch Protection nhận Status Check
+    # Run on every PR so GitHub branch protection can consistently see this status check.
 
 concurrency:
   group: terraform-vmresource-state-lock
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. Kiểm tra xem PR có sửa các file thuộc VM Resource hay không
+      # 1. Check whether the PR changes VM resource files.
       - name: Check for VM Resource Changes
         uses: dorny/paths-filter@v3
         id: changes
@@ -55,7 +55,7 @@ jobs:
               - '.tflint.hcl'
               - '.checkov.yaml'
 
-      # 2. Các bước bên dưới CHỈ CHẠY khi steps.changes.outputs.src == 'true'
+      # 2. Run the following steps only when steps.changes.outputs.src == 'true'.
       - name: Azure Login
         if: steps.changes.outputs.src == 'true'
         uses: azure/login@v2
@@ -147,7 +147,7 @@ jobs:
             terraform/02-vmresource/plan-metadata.txt
           retention-days: 7
 
-      # 3. Thông báo hoàn thành an toàn khi không đụng tới file VM Resource
+      # 3. Report a successful skip when no VM resource files changed.
       - name: Skip Execution Notification
         if: steps.changes.outputs.src == 'false'
         run: echo "No VM Resource files changed in this PR. Plan skipped safely."

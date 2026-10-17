@@ -30,7 +30,7 @@ jobs:
           audience: ${{ secrets.TAILSCALE_CI_AUDIENCE }}
           tags: tag:ci
 
-      # BƯỚC MỚI: Dynamically resolve CM Node IP/Hostname qua Tag:cm
+      # Dynamically resolve the control-manager IP by its Tailscale tag.
       - name: Resolve CM Node Hostname
         id: resolve_node
         run: |
@@ -40,7 +40,7 @@ jobs:
           TARGET_IP=""
 
           until [ -n "$TARGET_IP" ]; do
-            # Filter trong Tailscale mesh node nào có tag:cm và đang Online (Online = true)
+            # Select an online Tailscale peer tagged as the control manager.
             TARGET_IP=$(tailscale status --json | jq -r '.Peer[] | select(.Tags[]? == "tag:cm" and .Online == true) | .TailscaleIPs[0]' | head -n 1)
 
             if [ -n "$TARGET_IP" ] && [ "$TARGET_IP" != "null" ]; then
