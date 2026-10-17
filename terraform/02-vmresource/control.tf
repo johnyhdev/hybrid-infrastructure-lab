@@ -17,7 +17,7 @@ resource "tls_private_key" "internal_lab_key" {
   rsa_bits  = 4096
 }
 
-# 1. Bọc templatefile vào base64encode() VÀ sensitive()
+# Mark rendered cloud-init data as sensitive and encode it for Azure custom data.
 resource "terraform_data" "cm_cloud_init" {
   for_each = var.control_vms
 
@@ -56,7 +56,7 @@ resource "azurerm_linux_virtual_machine" "cm" {
     public_key = var.ssh_public_key
   }
 
-  # 2. Lấy trực tiếp chuỗi Base64 đã được mã hóa sẵn từ terraform_data
+  # Read the pre-encoded cloud-init data from terraform_data.
   custom_data = terraform_data.cm_cloud_init[each.key].output
 
   lifecycle {

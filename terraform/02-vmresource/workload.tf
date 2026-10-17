@@ -12,7 +12,7 @@ resource "azurerm_network_interface" "workload" {
   }
 }
 
-# 1. Quản lý việc trigger rebuild khi workload-cloud-init.yaml thay đổi
+# Track cloud-init changes so the VM can be recreated when its configuration changes.
 resource "terraform_data" "workload_cloud_init" {
   for_each = var.workload_vms
 
@@ -47,10 +47,10 @@ resource "azurerm_linux_virtual_machine" "workload" {
     public_key = var.ssh_public_key
   }
 
-  # 2. Lấy dữ liệu Base64 từ terraform_data
+  # Read the Base64 cloud-init data from terraform_data.
   custom_data = terraform_data.workload_cloud_init[each.key].output
 
-  # 3. Tự động thay thế (recreate) VM khi cloud-init thay đổi
+  # Recreate the VM when cloud-init changes.
   lifecycle {
     replace_triggered_by = [
       terraform_data.workload_cloud_init[each.key]

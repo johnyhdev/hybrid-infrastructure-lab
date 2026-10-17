@@ -28,7 +28,6 @@ variable "workload_subnet_name" {
   default     = "snet-workload"
 }
 
-#VM Ubuntu
 variable "admin_username" {
   description = "Admin username for the VM"
   type        = string
@@ -36,9 +35,14 @@ variable "admin_username" {
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key for initial VM provisioning"
+  description = "Administrator public SSH key required for secure VM provisioning and emergency access."
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.ssh_public_key)) > 0
+    error_message = "Set ssh_public_key to the administrator's SSH public key."
+  }
 }
 
 variable "control_vms" {
@@ -60,13 +64,21 @@ variable "control_vms" {
 variable "tailscale_cm_client_id" {
   description = "Tailscale WIF client ID for CM VMs"
   type        = string
-  default     = "TNyex2DCUG11CNTRL-kTgsair2Do11CNTRL"
+
+  validation {
+    condition     = length(trimspace(var.tailscale_cm_client_id)) > 0
+    error_message = "Set tailscale_cm_client_id to the client ID created for the Azure control-manager WIF credential."
+  }
 }
 
 variable "tailscale_cm_audience" {
   description = "Tailscale WIF audience for CM VMs"
   type        = string
-  default     = "fb60f99c-7a34-4190-8149-302f77469936"
+
+  validation {
+    condition     = length(trimspace(var.tailscale_cm_audience)) > 0
+    error_message = "Set tailscale_cm_audience to the audience configured for the Azure control-manager WIF credential."
+  }
 }
 
 variable "workload_vms" {
