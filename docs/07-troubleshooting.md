@@ -30,7 +30,13 @@ Find the first failing step and diagnose one layer at a time. Never paste passwo
 
 ## Cloud-init and Ansible
 
-Connect to the CM through the private Tailscale address with a trusted admin key (or Azure Serial Console if configured), then inspect:
+Connect from an administrator device that is already on the tailnet and permitted by the policy. In PowerShell, use the CM's Tailscale IP from Tailscale Admin Console → Machines:
+
+```powershell
+ssh azureadmin@<CM_TAILSCALE_IP>
+```
+
+This lab's normal CM access uses Tailscale SSH identity/policy; it does not require the Azure provisioning private key. The repository does not configure Azure Serial Console, so do not assume that recovery path exists. Once connected to the CM, run these Linux commands:
 
 ```bash
 sudo cloud-init status --long
@@ -40,12 +46,24 @@ sudo journalctl -u tailscaled -n 200 --no-pager
 sudo tail -n 100 /var/log/cloud-init-output.log
 ```
 
-Check `/var/log/cloud-init-done.tag`, repository path `/home/azureadmin/hybrid-infrastructure-lab`, Ansible virtual environment, and inventory generation. The CM currently clones over HTTPS without repository authentication. A private fork requires a deliberate auth design; do not embed a PAT in cloud-init.
+Check the completion marker, clone, Ansible runtime, and inventory using these commands on the CM:
+
+```bash
+test -f /var/log/cloud-init-done.tag && echo "cloud-init marker: present" || echo "cloud-init marker: missing"
+test -d /home/azureadmin/hybrid-infrastructure-lab && echo "repository clone: present" || echo "repository clone: missing"
+/opt/ansible-venv/bin/ansible --version
+az login --identity
+cd /home/azureadmin/hybrid-infrastructure-lab/ansible
+./inventory/generate_inventory.sh
+ansible-inventory -i inventory/generated/azure.yml --graph
+```
+
+The inventory graph should show the control and workload groups. The CM currently clones the public repository over HTTPS without repository authentication. A private fork requires a deliberate authentication design; do not embed a PAT in cloud-init. The generated inventory file is ignored by Git and contains private network addresses; do not attach it to public issues.
 
 For Ansible failures:
 
 1. Verify CM routing and workload SSH TCP 22 access from `10.20.1.0/24`.
-2. Re-run inventory generation and inspect generated host/variables.
+2. From `/home/azureadmin/hybrid-infrastructure-lab/ansible`, run `./inventory/generate_inventory.sh` and `ansible-inventory -i inventory/generated/azure.yml --graph`; confirm the workload VM appears under the `workload` group.
 3. Verify the Terraform-generated internal SSH key exists on the CM and the matching public key was added to workloads.
 4. Inspect the failing task and host reachability; use the ping check in `ansible/run.sh`.
 5. Inspect the affected service with `systemctl` and `journalctl`, fix the role/source, and rerun.

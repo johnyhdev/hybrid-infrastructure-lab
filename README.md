@@ -17,7 +17,7 @@ Read the numbered documents in `docs/` in order. They explain the manual bootstr
 7. [07 — Troubleshooting by checkpoint](docs/07-troubleshooting.md)
 8. [08 — Limitations, security, and cleanup](docs/08-limitations-and-cleanup.md)
 
-The current repository has two independent Terraform roots and state files. Older single-root phase instructions are obsolete.
+The current repository has two independent Terraform roots and state files; the numbered documents describe this current layout.
 
 ## What the lab does
 
@@ -91,10 +91,10 @@ See [all limitations and cleanup guidance](docs/08-limitations-and-cleanup.md) a
 - `terraform/01-identity/` — persistent Resource Group, managed identity, and `cm_reader` role assignment.
 - `terraform/02-vmresource/` — private network, VMs, NSGs, and optional private Load Balancer scaffolding.
 - `bootstrap/` — control-manager and workload cloud-init.
-- `ansible/` — inventory, playbooks, roles, and templates.
+- `ansible/` — inventory generator, playbooks, roles, and templates. Generated inventory under `ansible/inventory/generated/` is local runtime output and is ignored by Git.
 - `tailscale/policy.hujson` — tags, route approval, grants, and Tailscale SSH rules.
 - `docs/01-...08-...` — ordered setup, verification, troubleshooting, and cleanup instructions.
 
 ## Verification scope
 
-The documentation has been aligned with repository source. It does not validate a live Azure subscription, GitHub Environment, Tailscale tailnet, quota, or deployment. Verify all values and review every plan in your own environment before approval.
+The numbered guides provide setup steps based on the repository configuration, but they cannot verify your live Azure subscription, GitHub Environment protection/OIDC claims, Tailscale UI settings, quotas, or deployment. Tailscale issuer/audience values and repository-specific identifiers must be copied from your own consoles and checked against the workflow. Follow the verification checkpoints, stop on unexpected output, and review every Terraform plan in your own environment before approval.

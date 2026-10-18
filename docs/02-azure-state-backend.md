@@ -36,6 +36,37 @@ az storage container create `
 
 If the selected Azure CLI/API does not support disabling shared-key access, stop and verify the current backend authentication design; never put an account key into Terraform configuration. Enable Blob versioning and soft-delete/data-protection safeguards in the Storage Account. Storage firewall restrictions must still allow your administrators and GitHub runners to reach the backend.
 
+Enable Blob versioning and deletion recovery immediately after creation. Run this PowerShell command with the same `$storageAccount` and `$stateResourceGroup` values set above:
+
+```powershell
+az storage account blob-service-properties update `
+  --account-name $storageAccount `
+  --resource-group $stateResourceGroup `
+  --enable-versioning true `
+  --enable-delete-retention true `
+  --delete-retention-days 14 `
+  --enable-container-delete-retention true `
+  --container-delete-retention-days 14
+```
+
+Verify the account-level security settings and Blob data-protection properties:
+
+```powershell
+az storage account show `
+  --name $storageAccount `
+  --resource-group $stateResourceGroup `
+  --query "{name:name,httpsOnly:enableHttpsTrafficOnly,minTlsVersion:minimumTlsVersion,publicBlobAccess:allowBlobPublicAccess,sharedKeyAccess:allowSharedKeyAccess,defaultNetworkAction:networkRuleSet.defaultAction}" `
+  --output table
+
+az storage account blob-service-properties show `
+  --account-name $storageAccount `
+  --resource-group $stateResourceGroup `
+  --query "{versioning:isVersioningEnabled,blobDeleteRetention:deleteRetentionPolicy,containerDeleteRetention:containerDeleteRetentionPolicy}" `
+  --output json
+```
+
+Confirm `httpsOnly` is `True`, `minTlsVersion` is `TLS1_2`, public blob access and shared-key access are disabled, and versioning plus both retention policies are enabled. If an option is unsupported by the installed CLI/API, do not skip protection silently: inspect the current Azure Portal Storage Account → Data protection settings, configure the equivalent options, then rerun the verification command. Choose a firewall/private-endpoint design that permits both your administrator workstation and the GitHub runner; do not enable a network rule that makes state inaccessible to CI.
+
 ## Grant the bootstrap user Blob access
 
 Azure management-plane `Reader` or `Contributor` does not grant Blob data access. The user who initializes/applies Terraform locally needs `Storage Blob Data Contributor` on the state account (or a narrower container scope), including permission to lease the state blob:
@@ -74,6 +105,8 @@ terraform {
 ```
 
 Do not copy a backend name/key from another repository. Terraform creates the state blob on first apply.
+
+These backend files use `use_oidc = true` and `use_azuread_auth = true`, matching the GitHub Actions workflows. A local `az login` does not automatically provide the GitHub-issued OIDC token. The local Terraform CLI flow is therefore not assumed to work just because Azure CLI login succeeds. Test it only with an explicitly configured, supported local authentication method; never solve a local auth error by inserting an account key, client secret, or password into a backend file. CI authentication is verified by the workflow checks in document 06.
 
 ## Checkpoint
 

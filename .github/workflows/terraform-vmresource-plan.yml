@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    # Run on every PR so GitHub branch protection can consistently see this status check.
 
 concurrency:
   group: terraform-vmresource-state-lock
@@ -70,9 +69,31 @@ jobs:
         with:
           terraform_wrapper: false
 
+      # --- [Optimized CACHE: Terraform Providers] ---
+      - name: Cache Terraform Providers & CLI Plugins
+        if: steps.changes.outputs.src == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugins
+            terraform/02-vmresource/.terraform
+          key: ${{ runner.os }}-tf-provider-${{ hashFiles('terraform/02-vmresource/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-provider-
+
       - name: Setup TFLint
         if: steps.changes.outputs.src == 'true'
         uses: terraform-linters/setup-tflint@v5
+
+      # --- [Optimized CACHE: TFLint Plugins] ---
+      - name: Cache TFLint Plugins
+        if: steps.changes.outputs.src == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: ${{ runner.os }}-tflint-${{ hashFiles('.tflint.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tflint-
 
       - name: TFLint Init
         if: steps.changes.outputs.src == 'true'
@@ -81,6 +102,15 @@ jobs:
       - name: TFLint
         if: steps.changes.outputs.src == 'true'
         run: tflint --recursive
+
+      # --- [Optimized CACHE: Python Pip cho Checkov] ---
+      - name: Cache Python Pip for Checkov
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-checkov
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Checkov Security Scan
         if: steps.changes.outputs.src == 'true'
