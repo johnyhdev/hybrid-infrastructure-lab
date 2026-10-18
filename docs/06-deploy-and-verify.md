@@ -10,6 +10,16 @@ Follow this sequence. Do not approve an apply until state, Azure OIDC/RBAC, and 
 4. Confirm each workflow is using the intended GitHub Environment and succeeds in OIDC/backend authentication.
 5. Merge only after review. The apply workflow finds the plan artifact and waits at the apply environment for approval. Review the plan summary, run, and target before approving.
 
+Run these checks from the repository root in PowerShell before staging or pushing. The output of `git ls-files` must not list state, tfvars, generated inventory, or plans; ignored files may still be tracked if they were added before ignore rules were written:
+
+```powershell
+git status --short
+git ls-files | Select-String -Pattern '(^|/)(\.terraform/|.*\.tfstate(\..*)?|.*\.tfvars(\.json)?|.*\.tfplan|tfplan(\.txt)?|destroy-plan\.txt|ansible/inventory/generated/)'
+git check-ignore -v terraform/02-vmresource/tfplan terraform/02-vmresource/tfplan.txt ansible/inventory/generated/azure.yml
+```
+
+The `git ls-files` search should return no sensitive/generated files; `git check-ignore` should identify ignore rules for the sample paths (it can report a path does not exist yet). If any sensitive value was committed previously, merely deleting it or adding `.gitignore` is insufficient: revoke/rotate the affected key or credential first, then remove it from Git history using a reviewed history-rewrite procedure and invalidate retained artifacts/backups where possible. Do not publish the affected clone until reviewed.
+
 Apply the initial Tailscale policy manually before creating VMs so the required tags and route rules are present. Later policy changes should pass the PR test and be reviewed before merge.
 
 ## Apply the identity root first
@@ -33,6 +43,8 @@ Open a PR changing `terraform/02-vmresource/**` (or another path included in the
 
 Terraform apply finishing does not mean cloud-init/Tailscale is ready. The Ansible deploy workflow joins Tailscale as `tag:ci`, then uses its existing OpenSSH commands to connect to the CM's Tailscale IP. Tailscale SSH and tailnet policy authorize the CI identity; no `SSH_PRIVATE_KEY` secret or `ssh-agent` step is needed. The CM runs Ansible to configure workloads over the private Azure network.
 
+The deployment is a separate workflow run: after `Terraform VM Resource Apply` completes on `main`, GitHub starts `Ansible CD Deploy` because `.github/workflows/ansible-deploy.yml` listens for that workflow's completion. Open **Actions → Ansible CD Deploy**, select the run associated with the VM apply, and check the `Ansible Continuous Deployment` job. Success means it joined Tailscale, found an online `tag:cm`, waited for cloud-init, pulled `main` on the CM, generated inventory, and completed `ansible/run.sh`. If no VM-resource paths changed, the apply workflow can finish successfully with its apply job skipped; its successful completion can still trigger Ansible. Review the run's skipped/successful steps rather than assuming each workflow run changed Azure resources.
+
 The deployment keeps the existing OpenSSH options, including `StrictHostKeyChecking=no` and `ConnectTimeout=5`. Tailscale SSH provides access authorization through tailnet identity/policy; disabling host-key checking still weakens SSH server identity verification. This is retained for compatibility with the lab automation, not recommended for sensitive production workloads.
 
 If migrating from existing VMs provisioned with `SSH_PUBLIC_KEY`, review the plan because changing VM authentication can force replacement. Recreating a VM removes its old authorized key; deleting the public key from source does not revoke it from an existing VM or erase it from state versions, old workflow artifacts, or Git history. Do not edit Terraform state by hand.
@@ -45,20 +57,42 @@ az network vnet subnet list --resource-group "<LAB_RESOURCE_GROUP>" --vnet-name 
 az vm identity show --resource-group "<LAB_RESOURCE_GROUP>" --name "vm-cm-01" --output json
 ```
 
-Confirm both VMs are running and private-only, the CM has `id-cm`, and no Public IP is associated. In Tailscale Admin Console → Machines, verify `vm-cm-01` is online with `tag:cm` and that route `10.20.2.0/24` is advertised and approved. Confirm the Ansible deploy workflow succeeds and inventory discovers the workload.
+Replace `<LAB_RESOURCE_GROUP>` and `<VNET_NAME>` with the names in the Terraform variables and run the commands in PowerShell. Confirm both VMs are running and private-only, the CM has `id-cm`, and no Public IP is associated. In Tailscale Admin Console → Machines, verify `vm-cm-01` is online with `tag:cm` and that route `10.20.2.0/24` is advertised and approved. Confirm the Ansible deploy workflow succeeds and inventory discovers the workload.
 
-An administrator whose Tailscale identity is permitted by the policy can connect over the private tailnet, for example `ssh azureadmin@<CM_TAILSCALE_IP>`. This uses Tailscale SSH authorization and does not require the VM administrator private key. Keep the private key corresponding to `SSH_PUBLIC_KEY` protected as a separate VM-level emergency credential; do not place it in GitHub CI. Do not use a public IP or open SSH to the Internet. Password authentication is disabled.
+An administrator whose Tailscale identity is permitted by the policy can connect over the private tailnet, for example `ssh azureadmin@<CM_TAILSCALE_IP>`. This uses Tailscale SSH authorization and does not require the VM administrator private key. Keep the private key corresponding to `SSH_PUBLIC_KEY` protected, but note that this repository does not configure or verify a separate key-based/Serial Console recovery path. Do not use a public IP or open SSH to the Internet. Password authentication is disabled.
 
 ## Verify Ansible services
 
-On the workload through the CM/Ansible, confirm:
+Run these checks **on the control-manager VM**, not on the Windows laptop. Connect using an administrator device that is already on the tailnet and permitted by the policy:
 
-- Nginx is active on port 80 and proxies to the sample app at `127.0.0.1:8080`.
-- `sample-app` is active; test through Nginx on port 80 and locally on port 8080.
-- PostgreSQL packages/service are installed, but no database/schema/application integration is configured.
-- Node Exporter is active on port 9100; NSG rules restrict access to the automation subnet.
+```powershell
+ssh azureadmin@<CM_TAILSCALE_IP>
+```
 
-Use Ansible output, `systemctl status <service>`, and `journalctl -u <service> -n 100 --no-pager` to troubleshoot. The app is not internet-facing. Re-run Ansible to test convergence; upstream package/template changes can still produce changes between runs.
+Replace `<CM_TAILSCALE_IP>` with the address shown for `vm-cm-01` in Tailscale Admin Console → Machines. After connecting, run the following Bash commands on the CM to refresh Azure inventory. `az login --identity` uses the CM's attached managed identity; do not paste a user password or token:
+
+```bash
+cd /home/azureadmin/hybrid-infrastructure-lab/ansible
+az login --identity
+./inventory/generate_inventory.sh
+ansible-inventory -i inventory/generated/azure.yml --graph
+```
+
+The graph should contain `control` and `workload` groups and `vm-workload-01` under workload. Then check services and both application ports on every workload VM through Ansible:
+
+```bash
+ansible workload \
+	-i inventory/generated/azure.yml \
+	--private-key ~/.ssh/vm-cm-workload \
+	-u azureadmin \
+	--ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
+	-m shell \
+	-a 'set -e; for service in nginx sample-app postgresql node_exporter; do state=$(systemctl is-active "$service"); printf "%s: %s\n" "$service" "$state"; test "$state" = active; done; printf "nginx response: "; curl --fail --silent --show-error http://127.0.0.1/; printf "app response: "; curl --fail --silent --show-error http://127.0.0.1:8080/; printf "Node Exporter metrics:\n"; curl --fail --silent --show-error http://127.0.0.1:9100/metrics | head -n 3'
+```
+
+Expected: each `systemctl is-active` result is `active`; both port 80 and port 8080 return `Hybrid Infrastructure Lab - Application OK`; the Node Exporter request returns Prometheus text beginning with metric names. A failed command exits nonzero. PostgreSQL being active means the package/service is installed; this lab does not configure a database or connect the sample application to it. The app and metrics remain private; they are not expected to respond from the public Internet.
+
+To re-run full configuration after correcting a role or template, stay on the CM in `/home/azureadmin/hybrid-infrastructure-lab/ansible` and run `./run.sh`. This logs in with managed identity, regenerates inventory, waits for SSH reachability, and applies `playbooks/site.yml`. The separate `playbooks/remediation.yml` only starts the listed services; it does not perform full configuration. For diagnosis, use `ansible workload ... -m shell -a 'systemctl status <SERVICE> --no-pager; journalctl -u <SERVICE> -n 100 --no-pager'` with the same inventory/private-key/SSH arguments above. Do not add a Public IP to troubleshoot.
 
 ## Destroy the temporary VM environment
 

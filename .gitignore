@@ -5,6 +5,11 @@
 *.tfplan
 tfplan
 tfplan.*
+*-tfplan.txt
+tfplan.txt
+destroy-plan.txt
+destroy-execution.out
+plan-metadata.txt
 crash.log
 crash.*.log
 *.tfvars
@@ -27,6 +32,9 @@ credentials.json
 
 # Generated security scan reports may expose infrastructure details
 checkov-result.json/
+
+# Generated Ansible inventory contains private topology details
+/ansible/inventory/generated/
 
 # OS
 .DS_Store
