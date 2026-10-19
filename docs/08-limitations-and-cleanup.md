@@ -1,31 +1,37 @@
-# 08 — Limitations, security, and cleanup
+# 08 — Limitations, Security Considerations, and Cleanup
 
-## Current limitations
+## Architecture Scope and Scaling Considerations
 
-- This is a small learning lab, not a production architecture: no HA/SLA, autoscaling, backup/restore runbooks, centralized logging, alerting, incident response, or end-to-end monitoring.
-- Defaults create one control-manager and one workload VM in one region/zone. VM maps allow more entries, but scaling, quota, routing, inventory, and failure behavior are not validated.
-- Default VMs use Ubuntu 24.04 ARM64, `Standard_D2ps_v6`, zone 1. Confirm availability and quota in each subscription.
-- No Public IP is provisioned. SSH administration is intended over Tailscale/private networking. The administrator public key is installed for Azure VM provisioning, but this repository does not configure or verify a separate private-key/Serial Console emergency recovery path; never open SSH to the Internet for debugging.
-- Azure requires a VM authentication mechanism. This project installs the administrator public SSH key and disables password authentication. The public key is supplied to workflows as `SSH_PUBLIC_KEY`; private-key material must remain secret. `sensitive` in Terraform redacts normal CLI output but does not encrypt state.
-- Terraform creates a separate internal CM-to-workload SSH key. Its private key is stored in Terraform state and delivered to the CM via custom data/cloud-init. Protect backend state, versions/backups, plans, artifacts, cloud-init data, and Azure control-plane access.
-- The Ansible deployment workflow uses Tailscale OIDC plus the Tailscale SSH server/policy to reach the CM. It does not store or load the VM administrator private SSH key in GitHub CI.
-- The CI workflow retains `StrictHostKeyChecking=no` for compatibility with the current automation. This disables server identity verification and is not suitable for sensitive production workloads.
-- VM image version is `latest`; bootstrap and Ansible install upstream software, so rebuilds can differ over time.
-- The sample app is a small HTTP responder and does not use PostgreSQL. PostgreSQL packages are installed, but database/schema/credentials/TLS/backups are not configured. Node Exporter is installed, but no Prometheus server, metrics retention, or dashboards exist.
-- `ansible/group_vars/workload.yml` declares `*_enabled` flags, but current playbooks do not conditionally skip roles based on those values.
-- Load Balancer resources are scaffolding: workload NICs/IP configurations are not associated with the backend pool. The frontend is private; do not enable it expecting load balancing.
-- Tailscale `tag:ci` has powerful access. The current SSH policy permits both `azureadmin` and `root` on `tag:cm`, as required by the automation. Review tag ownership and access scope carefully.
-- The CM clones the repository using a hard-coded HTTPS URL. Private repositories need an explicit authentication design; do not embed a PAT/token in cloud-init.
-- Terraform plan summaries/artifacts may disclose topology or configuration. Restrict access and retention.
-- The destroy workflow generates/displays a destroy plan, then runs a separate `terraform destroy -auto-approve`; it does not apply the saved plan. Environment approval occurs before plan generation, so it is not approval of the exact destroy diff. Use only in an isolated lab; redesign as a separate review-then-apply process before using for important environments.
+- **Design Scope:** This repository serves as an **enterprise-grade reference architecture and automation PoC** demonstrating production-ready patterns (GitHub OIDC, Tailscale Zero-Trust mesh, Least-Privilege RBAC, and GitOps). As a streamlined reference implementation, it defaults to a single-region, single-instance setup and omits higher-tier enterprise add-ons such as multi-region HA/SLA, automated autoscaling, centralized SIEM/logging, alerting, and end-to-end incident response runbooks.
+- **Default Resource Footprint:** Defaults create one control-manager VM and one workload VM in one region/zone using Ubuntu 24.04 ARM64 (`Standard_D2ps_v6`, zone 1). VM maps allow additional entries, but scaling behavior, quota limits, cross-region routing, inventory, and failover mechanics require explicit validation for larger deployments. Confirm regional ARM64 availability and subscription quota prior to expanding.
+- **Network Access & Emergency Recovery:** No Public IP addresses are provisioned on virtual machines. Administrative access is strictly routed through Tailscale private mesh networking. While the administrator SSH public key is provisioned during Azure VM bootstrapping, this reference setup does not configure a separate private-key or Serial Console emergency recovery path; administrative access should never involve opening public SSH ports to the internet.
+- **Identity & Credential Management:** 
+  - Azure VM provisioning requires an authentication mechanism. This architecture installs the administrator SSH public key and disables password authentication. The public key is passed to workflows via `SSH_PUBLIC_KEY`; private-key material must remain strictly protected. Note that marking variables as `sensitive` in Terraform redacts output in CLI logs but does not encrypt plain text in state files.
+  - Terraform generates a separate internal CM-to-workload SSH key pair. Its private key is stored in Terraform state and delivered to the CM via cloud-init / custom data. System administrators must protect backend state, state versions/backups, generated plans, pipeline artifacts, cloud-init payloads, and Azure control-plane access.
+  - The Ansible deployment workflow uses Tailscale OIDC coupled with Tailscale SSH policy controls to reach the CM. This design eliminates the need to store long-lived administrator private keys in GitHub CI secrets.
+- **Pipeline Security Trade-offs:** The CI workflow retains `StrictHostKeyChecking=no` for compatibility with automated execution scripts. In strict production environments, server host-key verification should be explicitly pinned and managed.
+- **Software Lifecycle & Scaffolding:** 
+  - VM image versions are set to `latest`; runtime bootstrapping and Ansible playbooks fetch upstream packages, which means subsequent deployments may yield minor software version variances over time.
+  - The sample application is a lightweight HTTP responder and does not interact with PostgreSQL. PostgreSQL packages are pre-installed to demonstrate configuration management, but database clustering, schemas, credentials, TLS certificates, and backups are left for targeted downstream implementations. Node Exporter is installed, but centralized Prometheus collection, long-term metric retention, and Grafana dashboards are not provisioned.
+  - Variable flags like `*_enabled` in `ansible/group_vars/workload.yml` exist for structural configuration, but baseline playbooks do not conditionally skip roles based on those flags.
+  - Load Balancer resources act as structural scaffolding: workload NICs and IP configurations are not pre-associated with the backend pool by default. The frontend is private; do not enable it expecting immediate load-balancing behavior without wiring backend pools.
+- **Zero-Trust Scope & Repository Access:** 
+  - Tailscale `tag:ci` is granted access to reach `tag:cm` and the workload subnet on configured TCP ports. The SSH policy permits `azureadmin` and `root` access on `tag:cm`. Although deployment workflows connect as `azureadmin` (root is not required), team leads should audit tag ownership and scope rules regularly.
+  - The CM clones this repository using a hardcoded HTTPS URL. For private repository adoption, implement explicit authentication mechanisms (e.g., GitHub Apps or deploy keys); never embed Personal Access Tokens (PATs) in cloud-init scripts.
+  - Generated Terraform plan summaries and pipeline artifacts may expose internal network topology or resource parameters. Access and retention periods must be strictly governed.
+- **Deprovisioning Pipeline Behavior:** The destroy workflow generates and displays a destroy plan, followed by an execution of `terraform destroy -auto-approve`. It does not apply the previously saved plan artifact directly. Environment approval occurs before plan generation; thus, approval is granted for the job execution rather than a reviewed plan diff. Run only in target test/reference environments and adapt to a two-stage review-then-apply pipeline before adapting for production environments.
 
-## Cleanup
+---
 
-Cleanup has infrastructure and identity layers. Do not delete the state backend first: Terraform needs the state to delete managed resources safely. The workflow `Terraform VM Resource Destroy` removes module 02 only, and it does not apply its saved destroy plan; use it only for an isolated lab after reviewing the workflow/run target and its documented review gap.
+## Cleanup and Deprovisioning Procedures
 
-### A. Remove the VM/network module
+Infrastructure cleanup spans both compute resources and core identity/state layers. **Never delete the state storage backend first**, as Terraform requires active state files to cleanly deprovision managed Azure resources.
 
-1. In Azure Portal, select the intended subscription and inspect the lab Resource Group. In PowerShell, verify the active subscription and resource list before dispatching anything:
+Before executing cleanup, verify your active Azure subscription and cross-check backend configurations in both `terraform/01-identity/backend.tf` and `terraform/02-vmresource/backend.tf`. Confirm the active resource group, storage account, blob container, and state keys. Default configurations reference `rg-terraform-state`, `sthybridlab260826`, `tfstate`, `hybrid-identity.tfstate`, and `hybrid-vmresource.tfstate`—verify these exact names against your deployed environment.
+
+### A. Remove the Compute and Network Module (Module 02)
+
+1. In the Azure Portal or via CLI, inspect the target subscription and Resource Group. Verify active context and running instances before dispatching cleanup jobs:
 
 ```powershell
 az account show --output table
@@ -33,25 +39,33 @@ az vm list --resource-group "<LAB_RESOURCE_GROUP>" --show-details --output table
 az resource list --resource-group "<LAB_RESOURCE_GROUP>" --output table
 ```
 
-2. In GitHub, open **Actions → Terraform VM Resource Destroy → Run workflow** on `main`. Confirm the target repository and `terraform-destroy` Environment, review the resulting run and resource target, and proceed only for the disposable lab. Remember this workflow generates/displays one destroy plan and then invokes a separate `terraform destroy -auto-approve`; the Environment approval is before plan generation and is not approval of that exact diff.
-3. Verify Azure has no module-02 VMs, NICs, VNet, NSGs, or optional Load Balancer left:
+2. In GitHub Actions, navigate to **Actions → Terraform VM Resource Destroy → Run workflow** on `main`. Select the target repository and `terraform-destroy` Environment, then trigger the workflow. *Note:* This workflow generates a destroy plan and executes `terraform destroy -auto-approve`. Ensure target environment parameters are fully reviewed prior to pipeline approval.
+
+3. Verify Azure has successfully deprovisioned all module-02 resources (VMs, NICs, VNets, NSGs, and optional Load Balancers):
 
 ```powershell
 az resource list --resource-group "<LAB_RESOURCE_GROUP>" --output table
 az vm list --resource-group "<LAB_RESOURCE_GROUP>" --output table
 ```
 
-The `terraform/01-identity` Resource Group and `id-cm` remain. Do not delete the Resource Group manually while either Terraform root still manages it.
+The foundational `terraform/01-identity` Resource Group and `id-cm` managed identity will remain intact. Do not delete the Resource Group manually while Terraform state continues to manage it.
 
-### B. Remove the identity foundation through its reviewed Terraform state
+### B. Deprovision the Identity Foundation (Module 01)
 
-There is no dedicated identity-destroy workflow. The existing identity apply workflow can apply an approved plan, but `terraform/01-identity/main.tf` has `prevent_destroy = true` on the Resource Group and managed identity. Do not bypass that protection in an unreviewed edit and do not delete resources directly in Azure while they remain in Terraform state.
+There is no dedicated automated identity destroy workflow. Deprovisioning Module 01 requires applying changes through the identity pipeline. Because `terraform/01-identity/main.tf` enforces `prevent_destroy = true` lifecycle guards on core identity resources and the Resource Group, deprovisioning requires a controlled two-step Pull Request process:
 
-Use two pull requests, both reviewed by a trusted maintainer:
+1. **First PR (Lift Protection Guard):** 
+   - Remove the two `lifecycle { prevent_destroy = true }` blocks from the Resource Group and managed identity blocks in `terraform/01-identity/main.tf`. Retain all resource declarations.
+   - Confirm the generated plan reports **0 to add, 0 to change, 0 to destroy**. 
+   - Merge the PR and approve the `terraform-identity-apply` workflow run. This updates the state to lift destruction guards while keeping all Azure resources operational.
 
-1. First PR: remove only the two `lifecycle { prevent_destroy = true }` blocks from the Resource Group and identity resource blocks in `terraform/01-identity/main.tf`. Keep all resource declarations. Confirm the identity plan reports no infrastructure changes; merge and approve the corresponding `terraform-identity-apply` run. This removes the Terraform guard while retaining the resources.
-2. Second PR: remove the now-unneeded managed identity, its `cm_reader` role assignment, and the lab Resource Group resource declaration from `terraform/01-identity/main.tf` (and remove outputs/references that depend on those resources if present). Do not change backend settings. Before merging, open the `Terraform Identity Plan` artifact and confirm it proposes deletion only of the lab foundation resources; stop if it includes state storage, unrelated resources, or unexpected replacement/create actions.
-3. Merge only after the destroy plan review, then approve `Terraform Identity Apply` in the protected environment. Verify that the apply succeeds and check the lab Resource Group in Azure:
+2. **Second PR (Remove Resources):** 
+   - Remove the managed identity, its `cm_reader` role assignment, and the Resource Group resource blocks from `terraform/01-identity/main.tf` (along with any dependent outputs). Do not alter backend settings.
+   - Review the generated `Terraform Identity Plan` artifact. Confirm it proposes the deletion of **only** the lab foundation resources. Stop immediately if the plan targets state storage accounts, shared subscription infrastructure, or unexpected resources.
+
+3. **Execution & Verification:** 
+   - Merge the second PR and approve `Terraform Identity Apply` in the protected environment.
+   - Confirm successful apply execution and check the Azure Resource Group status:
 
 ```powershell
 $groupExists = az group exists --name "<LAB_RESOURCE_GROUP>"
@@ -63,43 +77,60 @@ if ($groupExists -eq "true") {
 }
 ```
 
-Expect `Lab Resource Group is absent.` If the group still exists, inspect the listed resources and do not assume cleanup completed. Because Azure may retain deleted-resource records temporarily, verify the active resource list rather than relying on historical activity records. Keep both Terraform state blobs until the decommission is verified and any required audit retention is complete.
+Expect output confirming `Lab Resource Group is absent.`. If the group persists, inspect remaining resources manually. Retain both Terraform state blobs until deprovisioning is fully verified and administrative audit compliance is satisfied.
 
-### C. Revoke external access and remove retained artifacts
+### C. Revoke External Access and Clean Artifacts
 
-Only after the workflows no longer need these identities:
+Execute these steps only after pipeline workflows no longer require access credentials:
 
-1. **Azure RBAC:** list assignments for each of the five GitHub Service Principal Object IDs at the state account, subscription, and lab resource-group scopes. Remove only the assignments that belong to this lab, by the assignment IDs returned from Azure, then list again to verify. Example:
+1. **Azure RBAC Cleanup:** List and remove temporary service principal role assignments scoped to the subscription, state storage account, or resource group. Delete assignments explicitly using their Azure assignment IDs:
 
 ```powershell
 az role assignment list --assignee-object-id "<SP_OBJECT_ID>" --all --query "[].{id:id,role:roleDefinitionName,scope:scope}" --output table
 az role assignment delete --ids "<EXACT_LAB_ROLE_ASSIGNMENT_RESOURCE_ID>"
 ```
 
-Repeat for the matching assignment IDs and SPs. Do not delete a role assignment based only on a display name; confirm principal ID, role, and scope. Include the temporary identity-apply subscription assignments and local administrator state-storage assignment if they were created for this lab.
-2. **Entra:** for each of the five App Registrations, list its FICs, delete the exact `github-<environment>` FIC names using the procedure in document 03, and verify they are absent. Only then delete the lab Service Principal and App Registration if they are not shared or used elsewhere. Verify the display name and object IDs before deletion; never remove a similarly named identity from another project.
-3. **GitHub:** under **Settings → Environments**, remove the lab's environment secrets/variables and protection settings after no workflows need them; delete the environments if this repository will no longer use them. Under **Actions**, delete old Terraform plan artifacts and review run summaries/comments. Plan files and summaries may disclose infrastructure details even though they are not passwords. Configure a short artifact retention period and verify old artifacts are no longer downloadable.
-4. **Tailscale:** in the Admin Console, revoke the policy GitOps, `tailscale-ci`, and CM workload-identity credentials created for this lab; remove any enrolled CI machines/tags that no longer exist; remove the lab tag grants and advertised-route approval only if they are not used by another device. Re-open the credential/device/policy views and verify the intended entries are gone. Do not revoke shared tailnet rules or identities without checking other consumers.
-5. **Git and local copies:** inspect `git ls-files` and repository history for state, tfvars, generated inventory, private keys, JSON credential files, and plan output. Delete downloaded plan artifacts, local plan/state copies that are no longer required, and temporary files. If a sensitive item was ever committed, rotate/revoke it first and follow reviewed Git-history remediation; `.gitignore` does not erase history. Deleting a file from OneDrive/SSD is not guaranteed secure erasure—also review OneDrive recycle bin/version history and GitHub retention controls where applicable.
+Repeat for all Service Principals associated with the environment. Verify principal ID, role name, and scope before deletion. Remove any temporary Blob Data roles granted to bootstrap administrative accounts during initial setup.
 
-### D. Retire the Terraform state backend last
+2. **Entra ID (Azure AD):** For each App Registration, remove the specific Federated Identity Credentials (`github-<environment>`) using the process outlined in Document 03. Once federated credentials are removed, safely delete the dedicated Service Principals and App Registrations, ensuring they are not shared with other active systems.
 
-The `rg-terraform-state` Resource Group and Storage Account are manually bootstrapped and not managed by either Terraform root. Keep them until the lab resource deletion and audit/retention needs are complete. If retiring them, first export any state required for audit to an access-controlled encrypted archive and confirm no workflows or Terraform users need it. Then delete the exact state Storage Account and its resource group in Azure Portal or with Azure CLI only after independently checking the active subscription and resource names. Deleting the backend destroys state versions/locks and can make remaining resources unmanaged; never use backend deletion as a way to “reset” Terraform.
+3. **GitHub Environment & Artifact Clean Hygiene:** Under **Settings → Environments**, remove secrets, variables, and deployment protection rules; delete the environments if no longer needed. Under **Actions**, purge old plan artifacts and workflow summaries. Ensure artifact retention policies are configured to minimize credential exposure risks in historical logs.
 
-Finally, re-run `az resource list` for the lab and state resource groups and review Azure Cost Management for lingering resources, storage, snapshots, or services outside Terraform.
+4. **Tailscale Node & Auth Revocation:** In the Tailscale Admin Console, revoke the policy GitOps credentials, `tailscale-ci` keys, and CM workload identity keys. Delete offline or ephemeral CI nodes and remove tag assignments or advertised route approvals if they are no longer required by other operational nodes.
 
-Never delete a `.tfstate` blob manually to reset the project. Losing state can leave existing resources unmanaged or cause duplicate creation.
+5. **Local Repository & Workstation Hygiene:** Inspect local clones for untracked `.tfstate` files, variable files (`.tfvars`), generated inventories, or private keys:
 
-## Existing VM migration and key rotation
+```bash
+git ls-files --others --exclude-standard
+```
 
-Changing an existing deployment from password login back to public-key-only authentication may force VM replacement. Review the Terraform plan. Recreating the VM installs the configured public key; removing a key from source does not revoke it from existing VMs or erase it from Azure state versions/backups, GitHub artifacts, or Git history. Rotate/revoke exposed keys and clean retained copies according to repository/storage retention policies. Never edit Terraform state by hand.
+Delete local plan artifacts and temporary files. If sensitive material was ever inadvertently committed to Git history, rotate the compromised credentials immediately and execute a controlled repository history purge.
 
-If the private key is exposed, revoke/recreate the key and replace affected VMs. Rotating a GitHub secret alone does not change the authorized key on already running VMs.
+### D. Retire the State Backend Last
 
-## Final checklist
+The `rg-terraform-state` Resource Group and Storage Account are bootstrapped independently and are not managed by Terraform. Keep this backend operational until all managed infrastructure components are completely deprovisioned and audit retention periods expire.
 
-- Destroy module 02 if the lab is temporary.
-- Retain and protect state until the foundation is deliberately decommissioned.
-- Remove temporary subscription-scope bootstrap RBAC when no longer required.
-- Disable unused GitHub/Tailscale credentials and `tag:ci` access.
-- Rotate exposed keys and review Git history, workflow artifacts, and Blob versions/backups before sharing the repository.
+To retire the backend:
+1. Export required state history to an encrypted, access-controlled archive for compliance.
+2. Confirm no active pipelines or team members rely on the backend.
+3. Manually delete the Storage Account and Resource Group via Azure Portal or Azure CLI after double-checking subscription contexts.
+
+Never delete a `.tfstate` blob directly from storage to reset a environment. Orphaned resources left in Azure without state tracking can cause billing drift and security vulnerabilities. Perform a final verification using `az resource list` and inspect Azure Cost Management to ensure all associated resources have been removed.
+
+---
+
+## Existing VM Migration and Key Rotation
+
+- **Administrator Key Changes:** The Terraform configuration disables password authentication and installs the initial administrator public key. Modifying this public key in code for an active deployment may trigger VM replacement in Terraform. Always review the plan prior to applying key updates.
+- **Key Removal vs. Revocation:** Removing a public key from source code does not remove it from running VMs, nor does it purge historical key material from Azure state backups, GitHub artifacts, or Git history. To rotate an exposed key, issue revocation updates directly to active hosts or redeploy via Terraform, followed by key rotation in GitHub Environment Variables.
+- **Internal SSH Key Management:** The CM-to-workload SSH key pair is dynamically generated and stored in Terraform state. Protect state backend access strictly and follow standard Pull Request procedures when forcing key regeneration.
+
+---
+
+## Final Verification Checklist
+
+- [ ] Compute and network resources (Module 02) successfully destroyed via pipeline workflow.
+- [ ] Identity foundation lifecycle guards removed, PR approved, and Module 01 deprovisioned.
+- [ ] Temporary subscription-level RBAC role assignments and bootstrap access revoked.
+- [ ] GitHub OIDC federated credentials, environment secrets, and Tailscale `tag:ci` keys revoked.
+- [ ] Local clones, Git history, workflow artifacts, and state storage verified clear of unencrypted secrets.

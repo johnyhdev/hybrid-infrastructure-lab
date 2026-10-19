@@ -18,11 +18,11 @@ echo "========================================"
 echo "Checking Workload Nodes Connectivity"
 echo "========================================"
 
-# Cấu hình retry: tối đa 15 lần, mỗi lần cách nhau 10 giây (tổng thời gian chờ ~2.5 phút)
+# Retry up to 15 times, waiting 10 seconds each time (about 2.5 minutes total)
 MAX_RETRIES=15
 RETRY_COUNT=0
 
-# Chỉ ping tới nhóm 'workload', thêm cờ SSH args để tránh bị kẹt host key prompt
+# Ping only the 'workload' group and set SSH options to avoid a host-key prompt
 until ansible workload \
   -i inventory/generated/azure.yml \
   --private-key ~/.ssh/vm-cm-workload \
