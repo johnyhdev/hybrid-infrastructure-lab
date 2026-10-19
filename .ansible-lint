@@ -1,10 +1,10 @@
 profile: min
 
-# Thay thế cho role_name_check: false
+# Replaces the old role_name_check: false setting
 skip_list:
   - role-name
   - yaml[formatting]
 
-# Bỏ qua các đường dẫn không cần lint nếu có
+# Exclude paths that do not need linting
 exclude_paths:
   - .github/

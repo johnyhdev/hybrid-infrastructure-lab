@@ -124,7 +124,7 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # Sử dụng tên file plan duy nhất cho module Identity để tránh đè file
+      # Use a unique plan filename for the identity module to avoid overwriting another plan
       - name: Terraform Plan
         run: terraform plan -no-color -out=identity.tfplan
 
