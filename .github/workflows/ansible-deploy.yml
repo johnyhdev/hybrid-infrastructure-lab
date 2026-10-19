@@ -36,10 +36,16 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "/repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/pulls")
 
-          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
 
-          if [ -z "$PR_NUMBER" ] \vert{}\vert{} [ "$PR_NUMBER" = "null" ]; then
-            echo "No pull request found for commit ${COMMIT_SHA}"
+          # Nếu không map trực tiếp được qua commit, thử tìm PR chứa commit đó hoặc lấy PR mới nhất đã merge
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "Direct commit match not found, looking for latest merged PR..."
+            PR_NUMBER=$(gh pr list --state merged --base main --limit 1 --json number --jq '.[0].number')
+          fi
+
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No pull request found."
             exit 0
           fi
 
