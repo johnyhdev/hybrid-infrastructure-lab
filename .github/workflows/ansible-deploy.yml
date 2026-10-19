@@ -11,20 +11,23 @@ on:
 permissions:
   contents: read
   id-token: write
-  pull-requests: write # <-- Bổ sung quyền ghi pull-request để post comment
+  pull-requests: write
 
 jobs:
-  deploy:
-    name: Ansible Continuous Deployment
+  # ==========================================
+  # JOB 1: Chạy ngay lập tức để post comment báo chờ approve
+  # ==========================================
+  notify-waiting:
+    name: Notify PR Waiting Approval
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
-    environment: tailscale-ci
+    outputs:
+      pr_number: ${{ steps.find-pr.outputs.PR_NUMBER }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. Tìm PR được merge thông qua commit SHA của workflow_run
       - name: Find Merged PR
         id: find-pr
         env:
@@ -38,13 +41,11 @@ jobs:
 
           PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
 
-          # Nếu không map trực tiếp được qua commit, thử tìm PR chứa commit đó hoặc lấy PR mới nhất đã merge
-          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
-            echo "Direct commit match not found, looking for latest merged PR..."
+          if [ -z "$PR_NUMBER" ] \vert{}\vert{} [ "$PR_NUMBER" = "null" ]; then
             PR_NUMBER=$(gh pr list --state merged --base main --limit 1 --json number --jq '.[0].number')
           fi
 
-          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+          if [ -z "$PR_NUMBER" ] \vert{}\vert{} [ "$PR_NUMBER" = "null" ]; then
             echo "No pull request found."
             exit 0
           fi
@@ -52,8 +53,7 @@ jobs:
           echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "Found PR: #$PR_NUMBER"
 
-      # 2. Comment thông báo Ansible CD bắt đầu chạy lên PR
-      - name: Comment Ansible Deploy Started on PR
+      - name: Comment Ansible Waiting on PR
         if: steps.find-pr.outputs.PR_NUMBER != '' && steps.find-pr.outputs.PR_NUMBER != 'null'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,9 +61,22 @@ jobs:
         run: |
           gh pr comment "$PR_NUMBER" --body "🚀 **Ansible CD Deploy** workflow has been triggered after Terraform apply.
 
-          Environment \`tailscale-ci\` is running configuration management...
+          Environment \`tailscale-ci\` is now **waiting for manual approval**.
 
-          👉 [View Workflow Run Logs](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          👉 [Review and Approve Workflow Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+
+  # ==========================================
+  # JOB 2: Chạy thực thi Ansible (Bị chặn bởi Environment Approval)
+  # ==========================================
+  deploy:
+    name: Ansible Continuous Deployment
+    needs: notify-waiting
+    runs-on: ubuntu-24.04
+    environment: tailscale-ci # <-- Nơi yêu cầu bấm nút Approve
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Connect to Tailscale Mesh Network via OIDC
         uses: tailscale/github-action@v4
@@ -122,20 +135,18 @@ jobs:
           TARGET_IP="${{ steps.resolve_node.outputs.cm_ip }}"
           ssh -o StrictHostKeyChecking=no azureadmin@$TARGET_IP "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh inventory/generate_inventory.sh && ./run.sh"
 
-      # 3. Comment thông báo kết quả (Thành công) lên PR
       - name: Comment Ansible Deploy Success on PR
-        if: success() && steps.find-pr.outputs.PR_NUMBER != '' && steps.find-pr.outputs.PR_NUMBER != 'null'
+        if: success() && needs.notify-waiting.outputs.pr_number != '' && needs.notify-waiting.outputs.pr_number != 'null'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
+          PR_NUMBER: ${{ needs.notify-waiting.outputs.pr_number }}
         run: |
           gh pr comment "$PR_NUMBER" --body "✅ **Ansible CD Deploy** workflow completed successfully! Configuration management applied via Control Manager node."
 
-      # 4. Comment thông báo kết quả (Thất bại) lên PR nếu có lỗi xảy ra ở bước trước đó
       - name: Comment Ansible Deploy Failure on PR
-        if: failure() && steps.find-pr.outputs.PR_NUMBER != '' && steps.find-pr.outputs.PR_NUMBER != 'null'
+        if: failure() && needs.notify-waiting.outputs.pr_number != '' && needs.notify-waiting.outputs.pr_number != 'null'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
+          PR_NUMBER: ${{ needs.notify-waiting.outputs.pr_number }}
         run: |
           gh pr comment "$PR_NUMBER" --body "❌ **Ansible CD Deploy** workflow failed. Please check the [Workflow Run Logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
