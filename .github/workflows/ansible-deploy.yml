@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   # ==========================================
-  # JOB 1: Chạy ngay lập tức để post comment báo chờ approve
+  # JOB 1: Start immediately and post a comment while approval is pending
   # ==========================================
   notify-waiting:
     name: Notify PR Waiting Approval
@@ -66,13 +66,13 @@ jobs:
           👉 [Review and Approve Workflow Run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
 
   # ==========================================
-  # JOB 2: Chạy thực thi Ansible (Bị chặn bởi Environment Approval)
+  # JOB 2: Run Ansible deployment after any configured environment approval
   # ==========================================
   deploy:
     name: Ansible Continuous Deployment
     needs: notify-waiting
     runs-on: ubuntu-24.04
-    environment: tailscale-ci # <-- Nơi yêu cầu bấm nút Approve
+    environment: tailscale-ci # Requires approval if configured in GitHub
 
     steps:
       - name: Checkout

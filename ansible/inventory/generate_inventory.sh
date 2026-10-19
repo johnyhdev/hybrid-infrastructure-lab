@@ -9,7 +9,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 
 CURRENT_HOSTNAME=$(hostname)
 
-# Query lấy tên và IP private chính xác từ Azure CLI
+# Query Azure CLI for VM names and private IP addresses
 CM_VMS=$(az vm list \
   --resource-group "$RESOURCE_GROUP" \
   --show-details \
@@ -33,10 +33,10 @@ all:
       hosts:
 EOF
 
-# Parse JSON cho nhóm control
+# Parse JSON for the control group
 echo "$CM_VMS" | jq -c '.[]' | while read -r vm; do
   NAME=$(echo "$vm" | jq -r '.name')
-  # Lấy IP đầu tiên trong chuỗi IP
+  # Select the first IP if Azure returns a comma-separated list
   IP=$(echo "$vm" | jq -r '.ip | split(",")[0] // .ip')
   
   if [ "$NAME" = "$CURRENT_HOSTNAME" ]; then
@@ -58,7 +58,7 @@ cat >> "$OUTPUT" <<EOF
       hosts:
 EOF
 
-# Parse JSON cho nhóm workload
+# Parse JSON for the workload group
 echo "$WORKLOAD_VMS" | jq -c '.[]' | while read -r vm; do
   NAME=$(echo "$vm" | jq -r '.name')
   IP=$(echo "$vm" | jq -r '.ip | split(",")[0] // .ip')
