@@ -19,10 +19,19 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Ansible
+      # --- [Optimized: CACHE PYTHON PIP CHO ANSIBLE & LINT] ---
+      - name: Cache Pip Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-ansible-${{ hashFiles('ansible/requirements.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-ansible-
+
+      - name: Install Ansible & Ansible Lint
         run: |
           python -m pip install --upgrade pip
-          pip install ansible-core
+          pip install ansible-core ansible-lint
 
       - name: Install Ansible collections
         run: |
@@ -37,13 +46,8 @@ jobs:
             ansible/playbooks/site.yml \
             --syntax-check
 
-      - name: Install ansible-lint
-        run: |
-          pip install ansible-lint
-          
       - name: Run ansible-lint
         env:
           ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles:${{ github.workspace }}/ansible/playbooks/roles
         run: |
           ansible-lint ansible/
-

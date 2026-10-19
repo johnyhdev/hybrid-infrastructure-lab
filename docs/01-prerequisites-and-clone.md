@@ -1,6 +1,6 @@
 # 01 — Prerequisites and clone setup
 
-Start here and follow documents 01–08 in order. The repository implements two Terraform roots (`terraform/01-identity` and `terraform/02-vmresource`); older single-root instructions in the phase draft are obsolete.
+Start here and follow documents 01–08 in order. The current repository implements two Terraform roots: `terraform/01-identity` and `terraform/02-vmresource`.
 
 ## Accounts and cost
 
@@ -28,6 +28,8 @@ code --version
 # Optional
 gh --version
 ```
+
+If GitHub CLI is not installed, run `winget install --id GitHub.cli --source winget` in PowerShell, then close and reopen the terminal before checking `gh --version`. Do not type the installation note after the command as if it were part of the command.
 
 Log in and select the intended subscription:
 
@@ -73,7 +75,62 @@ ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\hybrid-infra-lab"
 Get-Content "$env:USERPROFILE\.ssh\hybrid-infra-lab.pub"
 ```
 
-Supply **only the public key** (the `.pub` file contents) to GitHub as `SSH_PUBLIC_KEY`; never commit the private key or place it in Terraform files. Keep the private key protected on an administrator workstation as a separate VM-level emergency credential. Normal local and GitHub CI access to the CM uses Tailscale SSH identity and policy, so neither needs this private key. For local Terraform runs, provide the public key through `TF_VAR_ssh_public_key` or an ignored local `terraform.tfvars` file; verify it is not staged before committing.
+Supply **only the public key** (the `.pub` file contents) to GitHub as `SSH_PUBLIC_KEY`; never commit the private key or place it in Terraform files. Keep the private key protected on an administrator workstation. The repository provisions the public key for Azure VM authentication, but the lab's normal CM access uses Tailscale SSH identity/policy and does not use that private key. No alternate private-key or Azure Serial Console recovery path is configured and verified here; do not assume the private key alone provides emergency access. For local Terraform runs, provide the public key through `TF_VAR_ssh_public_key` or an ignored local `terraform.tfvars` file; verify it is not staged before committing.
+
+### Copy the public key into the GitHub value and local Terraform input
+
+1. In PowerShell, print the public half and copy the **entire single line** beginning with `ssh-rsa` (or the key type created by your `ssh-keygen` version):
+
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\hybrid-infra-lab.pub"
+```
+
+The private half is the file without `.pub`; never run `Get-Content` on it, paste it into GitHub, or place it in the repository. The public key is not a private credential, but the repo supplies it to Azure at VM creation.
+
+2. For the GitHub workflows, add that public-key line as the `SSH_PUBLIC_KEY` **secret** in each of these exact repository Environments: `terraform-vmresource-plan`, `terraform-vmresource-apply`, and `terraform-destroy`. The UI clicks and remaining Environment values are listed in document 05. The plan and apply workflows pass it as `TF_VAR_ssh_public_key`; the destroy workflow also needs it because Terraform loads the same required input configuration.
+
+3. Only run Terraform locally if you have already verified that your local Azure identity can authenticate to this repository's OIDC-configured AzureRM backend. Otherwise, use the GitHub plan workflow described in document 06. If local authentication is supported/configured, open a PowerShell terminal at the repository root and set the environment variable from the `.pub` file. Do this in the same terminal session in which Terraform is run:
+
+```powershell
+$env:TF_VAR_ssh_public_key = (Get-Content "$env:USERPROFILE\.ssh\hybrid-infra-lab.pub" -Raw).Trim()
+```
+
+Run commands separately in each module directory; these are independent Terraform roots with different remote state keys:
+
+```powershell
+Set-Location .\terraform\01-identity
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan
+```
+
+The identity root does not consume this variable; it is needed by `terraform/02-vmresource`. Change to that directory to plan VM resources only after the backend and Azure/Tailscale inputs are configured:
+
+```powershell
+Set-Location ..\02-vmresource
+$env:TF_VAR_tailscale_cm_client_id = "<TAILSCALE_CM_CLIENT_ID_FROM_DOCUMENT_04>"
+$env:TF_VAR_tailscale_cm_audience = "<TAILSCALE_CM_AUDIENCE_FROM_DOCUMENT_04>"
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan
+```
+
+Replace the two placeholders with the non-secret Client ID and Audience for the **Azure control-manager** Tailscale credential. These variables are required by `terraform/02-vmresource`; do not use the GitHub CI or policy-GitOps values.
+
+Local Terraform authentication with the repository's OIDC backend settings must be validated for your chosen local identity before running these commands; `az login` alone may not provide the GitHub OIDC token expected by CI. If local `terraform init` fails authentication, stop and use the documented GitHub workflow rather than adding a client secret or storage key to backend configuration.
+
+4. Clear the public-key value from the current PowerShell process when finished and verify it is empty:
+
+```powershell
+Remove-Item Env:TF_VAR_ssh_public_key -ErrorAction SilentlyContinue
+Remove-Item Env:TF_VAR_tailscale_cm_client_id -ErrorAction SilentlyContinue
+Remove-Item Env:TF_VAR_tailscale_cm_audience -ErrorAction SilentlyContinue
+Test-Path Env:TF_VAR_ssh_public_key
+```
+
+The last command should return `False`. If you instead create a local `terraform.tfvars`, create it only inside `terraform/02-vmresource`, ensure it contains only `ssh_public_key = "<PUBLIC_KEY_LINE>"`, confirm `git check-ignore .\terraform.tfvars` from that module directory, and delete it after use. Do not create one in the identity root and do not put the private key in either file. Deleting a file does not guarantee forensic erasure on SSD or OneDrive-synced storage.
 
 The VM-resource module also creates a separate Terraform-generated key for Ansible connections from the control-manager to workload VMs. Its private material is stored in Terraform state/custom data; see document 08 for the security implications.
 

@@ -55,8 +55,8 @@ jobs:
               exit 1
             fi
 
-            echo "CM Node with tag:cm not online yet. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
-            sleep 10
+            echo "CM Node with tag:cm not online yet. Retrying in 5s... ($RETRY_COUNT/$MAX_RETRIES)"
+            sleep 5
           done
 
       - name: Wait for CM Node Cloud-Init Completion
@@ -73,7 +73,7 @@ jobs:
               exit 1
             fi
             echo "Cloud-init or Git repo setup still in progress... Retrying in 10s ($RETRY_COUNT/$MAX_RETRIES)"
-            sleep 10
+            sleep 5
           done
           echo "CM Node Cloud-Init and Repository setup are 100% ready!"
 
