@@ -61,7 +61,9 @@ jobs:
         run: |
           gh pr comment "$PR_NUMBER" --body "🚀 **Ansible CD Deploy** workflow has been triggered after Terraform apply.
 
-          Environment \`tailscale-ci\` is running configuration management..."
+          Environment \`tailscale-ci\` is running configuration management...
+
+          👉 [View Workflow Run Logs](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
 
       - name: Connect to Tailscale Mesh Network via OIDC
         uses: tailscale/github-action@v4
