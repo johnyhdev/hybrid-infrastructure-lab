@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  pull-requests: write # <-- Bổ sung quyền ghi pull-request để post comment
 
 jobs:
   deploy:
@@ -23,6 +24,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1. Tìm PR được merge thông qua commit SHA của workflow_run
+      - name: Find Merged PR
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          echo "Finding PR for commit: $COMMIT_SHA"
+          PR_JSON=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/pulls")
+
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
+
+          if [ -z "$PR_NUMBER" ] \vert{}\vert{} [ "$PR_NUMBER" = "null" ]; then
+            echo "No pull request found for commit ${COMMIT_SHA}"
+            exit 0
+          fi
+
+          echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Found PR: #$PR_NUMBER"
+
+      # 2. Comment thông báo Ansible CD bắt đầu chạy lên PR
+      - name: Comment Ansible Deploy Started on PR
+        if: steps.find-pr.outputs.PR_NUMBER != '' && steps.find-pr.outputs.PR_NUMBER != 'null'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body "🚀 **Ansible CD Deploy** workflow has been triggered after Terraform apply.
+
+          Environment \`tailscale-ci\` is running configuration management..."
+
       - name: Connect to Tailscale Mesh Network via OIDC
         uses: tailscale/github-action@v4
         with:
@@ -30,7 +64,6 @@ jobs:
           audience: ${{ secrets.TAILSCALE_CI_AUDIENCE }}
           tags: tag:ci
 
-      # Dynamically resolve the control-manager IP by its Tailscale tag.
       - name: Resolve CM Node Hostname
         id: resolve_node
         run: |
@@ -40,7 +73,6 @@ jobs:
           TARGET_IP=""
 
           until [ -n "$TARGET_IP" ]; do
-            # Select an online Tailscale peer tagged as the control manager.
             TARGET_IP=$(tailscale status --json | jq -r '.Peer[] | select(.Tags[]? == "tag:cm" and .Online == true) | .TailscaleIPs[0]' | head -n 1)
 
             if [ -n "$TARGET_IP" ] && [ "$TARGET_IP" != "null" ]; then
@@ -50,7 +82,7 @@ jobs:
             fi
 
             RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+            if [ $RETRY_COUNT -ge$MAX_RETRIES ]; then
               echo "ERROR: Timed out waiting for CM Node with tag:cm to register on Tailscale."
               exit 1
             fi
@@ -68,11 +100,11 @@ jobs:
           
           until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 azureadmin@$TARGET_IP "test -f /var/log/cloud-init-done.tag && test -d /home/azureadmin/hybrid-infrastructure-lab" 2>/dev/null; do
             RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+            if [ $RETRY_COUNT -ge$MAX_RETRIES ]; then
               echo "ERROR: Timed out waiting for Cloud-Init setup to complete on $TARGET_IP."
               exit 1
             fi
-            echo "Cloud-init or Git repo setup still in progress... Retrying in 10s ($RETRY_COUNT/$MAX_RETRIES)"
+            echo "Cloud-init or Git repo setup still in progress... Retrying in 5s ($RETRY_COUNT/$MAX_RETRIES)"
             sleep 5
           done
           echo "CM Node Cloud-Init and Repository setup are 100% ready!"
@@ -81,3 +113,21 @@ jobs:
         run: |
           TARGET_IP="${{ steps.resolve_node.outputs.cm_ip }}"
           ssh -o StrictHostKeyChecking=no azureadmin@$TARGET_IP "cd /home/azureadmin/hybrid-infrastructure-lab && git pull origin main && cd ansible && chmod +x run.sh inventory/generate_inventory.sh && ./run.sh"
+
+      # 3. Comment thông báo kết quả (Thành công) lên PR
+      - name: Comment Ansible Deploy Success on PR
+        if: success() && steps.find-pr.outputs.PR_NUMBER != '' && steps.find-pr.outputs.PR_NUMBER != 'null'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body "✅ **Ansible CD Deploy** workflow completed successfully! Configuration management applied via Control Manager node."
+
+      # 4. Comment thông báo kết quả (Thất bại) lên PR nếu có lỗi xảy ra ở bước trước đó
+      - name: Comment Ansible Deploy Failure on PR
+        if: failure() && steps.find-pr.outputs.PR_NUMBER != '' && steps.find-pr.outputs.PR_NUMBER != 'null'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.find-pr.outputs.PR_NUMBER }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body "❌ **Ansible CD Deploy** workflow failed. Please check the [Workflow Run Logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
