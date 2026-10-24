@@ -220,7 +220,13 @@ foreach ($environment in $environments) {
 
 Expect exactly one result for each environment, with issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, and the exact repository subject ending in that environment. An empty result means the FIC was created on the wrong app, has a different name, or was not created. Correct this before configuring/running the workflow.
 
-After verifying all five, remove the temporary JSON files and confirm the directory is gone:
+After verifying all five, make sure you Set-Location back to Gihub Repo hybrid-infrastructure-lab:
+
+```powershell
+Set-Location "<your path github repo hybrid-infrastructure-lab>"
+```
+
+ Remove the temporary JSON files and confirm the directory is gone:
 
 ```powershell
 Remove-Item -LiteralPath $ficDir -Recurse -Force
@@ -229,7 +235,7 @@ Test-Path -LiteralPath $ficDir
 
 The last command must return `False`. These JSON files are configuration, not bearer credentials; deletion keeps setup artifacts out of the repository. File deletion is not guaranteed secure erasure on SSDs or synced storage, which is why the procedure creates them under the local temp directory in the first place.
 
-To intentionally revoke a FIC later, first list the app and copy the exact `name` returned by Azure, then delete that named credential from the same Application Object ID:
+To intentionally **revoke** a FIC later, first list the app and copy the exact `name` returned by Azure, then delete that named credential from the same Application Object ID:
 
 ```powershell
 az ad app federated-credential list --id "<APP_OBJECT_ID>" --output table
@@ -325,7 +331,26 @@ az role assignment create --assignee-object-id $spObjectIds["terraform-identity-
 az role assignment create --assignee-object-id $spObjectIds["terraform-identity-apply"] --assignee-principal-type ServicePrincipal --role "User Access Administrator" --scope $subscriptionScope
 ```
 
-The identity-apply `User Access Administrator` grant at subscription scope is powerful and is required by this initial bootstrap design. Use a dedicated lab subscription; once the identity foundation has been created, remove or narrow that grant only after verifying no planned identity operation needs it. The `terraform-destroy` app is for module 02 only; it does not remove the module 01 Resource Group or identity. For a fresh setup, apply the three bootstrap role assignments (identity-plan Reader plus identity-apply Contributor and User Access Administrator) before the first identity apply. After that apply has created the Resource Group, obtain its scope and grant the three workload roles:
+The identity-apply `User Access Administrator` grant at subscription scope is powerful and is required by this initial bootstrap design. Use a dedicated lab subscription; once the identity foundation has been created, remove or narrow that grant only after verifying no planned identity operation needs it. The `terraform-destroy` app is for module 02 only; it does not remove the module 01 Resource Group or identity. For a fresh setup, apply the three bootstrap role assignments (identity-plan Reader plus identity-apply Contributor and User Access Administrator) before the first identity apply. After that apply has created the Resource Group:
+
+Now move to 01-identity folder (you are at root hybrid-infrastructure-lab now):
+```powershell
+cd terraform/01-identity
+```
+
+Run these codes:
+```powershell
+terraform init
+terraform fmt
+terraform validate
+terraform plan
+```
+
+Make sure the Plan add 3 new resources. Then
+```powershell
+terraform apply -auto-approve
+```
+Now, terraform will create 3 new resources. Obtain its scope and grant the three workload roles:
 
 ```powershell
 $labRgScope = az group show --name "<LAB_RESOURCE_GROUP>" --query id -o tsv

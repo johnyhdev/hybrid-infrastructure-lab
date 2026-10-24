@@ -31,15 +31,102 @@ The existing deployment workflow keeps its OpenSSH options, including `StrictHos
 
 Configure protection while viewing each Environment's settings:
 
-1. For `terraform-identity-apply`, `terraform-vmresource-apply`, and `terraform-destroy`, enable **Required reviewers**, select trusted maintainers who can approve deployments, and set **Deployment branches and tags** to selected branches with only `main` allowed. Save each environment. Destroy is especially sensitive.
-2. For plan environments, remember that a job receives the Environment's secrets when it runs. Do not expose these credentials to untrusted fork pull requests. Prefer a private lab repository; otherwise configure repository/workflow restrictions and review the trust implications before enabling Actions.
-3. `tailscale-policy` is shared by PR test and main apply jobs. A required reviewer on this environment may gate the PR test too. If requiring approval, test the PR workflow behavior and ensure a trusted reviewer can approve it; do not mistakenly interpret a waiting job as a failed policy test.
-4. For `tailscale-ci`, restrict deployment branches to `main`. Add required reviewers if every automatic Ansible deployment must pause for approval; otherwise understand that a successful VM apply on `main` can trigger deployment without a separate approval.
-5. Open **Settings → Rules → Rulesets** (or the repository's branch-protection settings), create a rule targeting `main`, require pull requests and at least one approval, dismiss stale approvals when new commits are pushed, and require the status checks that actually appear for this repository. Enable GitHub Actions under **Settings → Actions → General**.
-6. To select required checks accurately, create a harmless documentation PR first and inspect the completed checks. Require the Terraform plan checks that should gate changes (for this repo they are reported as `Terraform Identity Plan` and `Terraform VM Resource Plan` when their path filters run), plus the relevant Ansible/Tailscale tests for changes they cover. Do not require a check that cannot run for the relevant path or a skipped conditional job; GitHub can otherwise leave merges blocked. Re-test the rule with a PR after saving it.
+### Part 1: Configuring Environment Protection
 
-The repository's `.github/CODEOWNERS` nominates an owner for review, but a CODEOWNERS file by itself does **not** require approval. The branch rule must enable code-owner review, and the listed owner/team must have repository access. Never approve your own production-like change as a substitute for an independent reviewer.
+To access the Environment settings: 
+👉 Go to your **Repository** $\rightarrow$ Click the **Settings** tab $\rightarrow$ In the left sidebar, click **Environments**.
 
-To verify the result, open each Environment again and check its deployment branch/reviewer settings, then open the branch-rules page and confirm the active rule targets `main`. Create a test PR and confirm the expected checks appear and block merging when they fail; do not test by approving a real infrastructure apply.
+#### 1. For Apply and Destroy Environments: `terraform-identity-apply`, `terraform-vmresource-apply`, `terraform-destroy`
+*Note: The destroy environment is exceptionally sensitive; configure with extreme care.*
 
-GitHub Environments do not automatically inherit secrets from one another. Confirm every workflow's referenced secrets/variables are set in the exact environment. Continue with [06 — Deploy and verify](06-deploy-and-verify.md).
+1. Click on the environment name (e.g., `terraform-identity-apply`).
+2. Enable **Required reviewers**:
+   * Check the box to enable required reviewers.
+   * Add trusted accounts or maintainers who are authorized to approve deployments.
+3. Under **Deployment branches and tags**:
+   * Click the dropdown and change it from *No restriction* to **Selected branches and tags**.
+   * Type **`main`** and click **Add rule**.
+4. Click **Save protection rules** (or save environment) at the bottom of the page.
+5. Repeat these exact steps for `terraform-vmresource-apply` and `terraform-destroy`.
+
+---
+
+#### 2. Security Considerations for Plan Environments
+* **Warning:** Jobs running plan operations receive the Environment's secrets upon execution.
+* **Best Practices:** 
+  * Keep your repository **Private** (Go to *Settings* $\rightarrow$ *General* $\rightarrow$ *Danger Zone* $\rightarrow$ *Change visibility* $\rightarrow$ *Private*).
+  * If the repository is Public, never grant unverified external fork pull requests permission to run workflows with environment credentials to prevent secret leakage.
+
+---
+
+#### 3. Configuring the `tailscale-policy` Environment
+* This environment is shared by both PR validation tests and main apply jobs.
+* **Important Caveat:** If you require reviewers for this environment, automated PR tests will also be **gated (paused)** and will wait for manual approval.
+* **What to do:** When you see a PR test in a yellow "Waiting / Pending review" state, do not mistake it for a code failure. Simply navigate to the environment and click **Approve and deploy** to let the workflow proceed.
+
+---
+
+#### 4. Configuring the `tailscale-ci` Environment
+1. Click on the **`tailscale-ci`** environment.
+2. Under **Deployment branches and tags**, restrict deployments exclusively to **`main`**.
+3. **Decision on Reviewers:**
+   * *For maximum safety:* Add Required reviewers so that every time Terraform provisions a new VM on `main`, the automated Ansible configuration pauses until you manually approve it.
+   * *For 100% automation:* Leave reviewers empty if you want CI/CD pipelines to run continuously without manual interruption.
+
+---
+
+### Part 2: Branch Protection for `main`
+
+#### Step 1: Enable GitHub Actions (if not already enabled)
+👉 Go to **Settings** $\rightarrow$ Left sidebar **Actions** $\rightarrow$ **General** $\rightarrow$ Ensure **Allow all actions and reusable workflows** is selected $\rightarrow$ Click **Save**.
+
+#### Step 2: Create a Branch Ruleset for `main`
+👉 Go to **Settings** $\rightarrow$ Left sidebar **Rulesets** $\rightarrow$ **Rulesets** $\rightarrow$ Click **New ruleset** $\rightarrow$ Select **New branch ruleset** (or *Add branch protection rule*).
+
+1. **Target branches:** 
+   * Name your ruleset (e.g., `Protect Main before PR`).
+   * Enforcement status: Set to **Active**.
+   * Target branches $\rightarrow$ Add target $\rightarrow$ Select **Include by pattern** (then type `main` and add).
+2. **Required Settings to Check:**
+   * [x] **Require a pull request before merging**: 
+     * Set minimum required approvals to at least `1`.
+     * [x] **Dismiss stale approvals when new commits are pushed** (Invalidates old approvals when new code is pushed).
+     * [x] **Require review from Code Owners** (Enforces reviews based on the `.github/CODEOWNERS` file).
+   * [x] **Require status checks to pass before merging** (Blocks merging until required status checks succeed).
+     * [x] **Require branches to be up to date before merging** (Invalidates old branches).
+     * [x] **Required status checks** $\rightarrow$ **Add checks** $\rightarrow$ Find **plan** $\rightarrow$ and check **Terrform Identity Plan** and **Terraform VM Resource Plan**  (Required Plan Completed before Merge to Main).
+
+---
+
+### Part 3: Selecting Required Status Checks - Use for Verify Steps only (Avoiding Merge Deadlocks)
+
+*Do not rush to type check names prematurely; the repository needs to register their exact names first.*
+
+1. **Create a Documentation PR (Test PR):**
+   * Create a new branch, make a harmless modification (e.g., update `README.md`), push it to GitHub, and open a Pull Request targeting `main`.
+2. **Inspect the Check Names:**
+   * Scroll down to the automated checks section at the bottom of the Pull Request. 
+   * Note the exact names reported for the Terraform checks: **Terraform Identity Plan** and **Terraform VM Resource Plan**, alongside relevant Ansible/Tailscale tests.
+3. **Update Your Ruleset:**
+   * Return to the Ruleset created in *Part 2*, locate **Require status checks to pass**, type or select the exact check names you just identified.
+   * *Caution:* Never require checks that cannot run for specific paths or conditional jobs that might get skipped; otherwise, GitHub will permanently block merging.
+   * Click **Save changes**.
+
+---
+
+### Part 4: Code Owners & Final Verification Checklist
+
+#### 1. Code Owners Compliance
+* Although the repository includes a `.github/CODEOWNERS` file, the file itself does **not** enforce approvals by default unless *Require review from Code Owners* is explicitly enabled in your branch rules.
+* Ensure all listed owners and teams have proper repository access.
+* **Golden Rule:** Even as repository owner, **never approve your own production-grade changes** as a substitute for an independent reviewer.
+
+#### 2. Final Verification Checklist
+1. [ ] Re-open each **Environment** under *Settings* $\rightarrow$ Verify deployment branches (`main`) and reviewers are correctly set.
+2. [ ] Re-open the **Rulesets** page $\rightarrow$ Confirm the active rule correctly targets `main`.
+3. [ ] Open a **Test PR** $\rightarrow$ Confirm expected status checks appear and successfully block merging when they fail *(Do not test this by approving a real infrastructure apply)*.
+4. [ ] Final sanity check: GitHub Environments do **not** automatically inherit secrets from one another. Confirm every workflow's required secrets and variables are explicitly defined in their respective environments.
+
+👉 Once completed, you are ready to proceed with **06 — Deploy and verify**.
+
+ Continue with [06 — Deploy and verify](06-deploy-and-verify.md).
