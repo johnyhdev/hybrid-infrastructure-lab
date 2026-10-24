@@ -60,9 +60,12 @@ To access the Environment settings:
 ---
 
 #### 3. Configuring the `tailscale-policy` Environment
-* This environment is shared by both PR validation tests and main apply jobs.
-* **Important Caveat:** If you require reviewers for this environment, automated PR tests will also be **gated (paused)** and will wait for manual approval.
-* **What to do:** When you see a PR test in a yellow "Waiting / Pending review" state, do not mistake it for a code failure. Simply navigate to the environment and click **Approve and deploy** to let the workflow proceed.
+- This environment is shared by both PR validation tests and main apply jobs.
+- **Important Caveat:** Because GitHub Environments apply protection rules globally to any job referencing them, enabling *Required reviewers* for this environment will also cause automated Pull Request tests to be **gated (paused)** in a yellow "Waiting / Pending review" state.
+- **How to Configure & Handle:**
+  1. Under **Deployment branches and tags**, select **No restriction** (allowing PR branches to run validation tests without being blocked).
+  2. Keep **Required reviewers** enabled below so that actual deployments when code merges to `main` remain safely protected and require manual approval.
+  3. *Note:* If you ever see a PR check paused in a yellow review state, simply navigate to your repository's *Settings $\rightarrow$ Environments $\rightarrow$ tailscale-policy* and click **Approve and deploy** to let the workflow proceed.
 
 ---
 
