@@ -27,7 +27,7 @@ until ansible workload \
   -i inventory/generated/azure.yml \
   --private-key ~/.ssh/vm-cm-workload \
   -u azureadmin \
-  --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
+  --ssh-common-args='-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null' \
   -m ping -o >/dev/null 2>&1; do
 
   RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -51,4 +51,4 @@ ansible-playbook \
   -i inventory/generated/azure.yml \
   playbooks/site.yml \
   --private-key ~/.ssh/vm-cm-workload \
-  --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+  --ssh-common-args='-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null'

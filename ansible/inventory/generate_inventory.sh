@@ -27,7 +27,7 @@ all:
   vars:
     ansible_user: azureadmin
     ansible_ssh_private_key_file: ~/.ssh/vm-cm-workload
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null'
   children:
     control:
       hosts:

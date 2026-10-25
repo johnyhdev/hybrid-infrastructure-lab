@@ -10,9 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   check-changes:
@@ -39,9 +38,13 @@ jobs:
   plan:
     name: Terraform Identity Plan
     needs: check-changes
-    if: ${{ needs.check-changes.outputs.has_changes == 'true' }}
+    if: ${{ needs.check-changes.outputs.has_changes == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     environment: terraform-identity-plan
+
+    permissions:
+      id-token: write
+      contents: read
 
     defaults:
       run:

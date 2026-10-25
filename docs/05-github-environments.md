@@ -18,6 +18,8 @@ Use the Entra app for the matching environment from document 03. Add these **sec
 
 `SSH_PUBLIC_KEY` must contain the public half of the key pair, e.g. the complete single-line content of the `.pub` file. Never put the private key in these Terraform environments or in the repository. This is the key Azure installs during VM provisioning; the documented normal CM access path is Tailscale SSH, and this lab does not configure/verify a separate private-key recovery path.
 
+The destroy workflow uses `terraform-vmresource-plan` to create a destroy plan, then pauses at the protected `terraform-destroy` Environment before applying that exact saved plan. The plan Environment must have the Azure plan app and the VM-resource variables/secrets listed above. If `terraform-vmresource-plan` has required reviewers, that first approval permits plan generation only; it does not approve destruction. Review the published plan summary, then approve the protected `terraform-destroy` Environment to authorize applying that exact artifact. Restrict both Environments to `main`. The plan identity needs the documented state access and read permissions, while the destroy identity is authorized to delete module-02 resources.
+
 ## Tailscale environments
 
 - `tailscale-ci`: create secrets `TAILSCALE_CI_CLIENT_ID` and `TAILSCALE_CI_AUDIENCE` only. No `SSH_PRIVATE_KEY` secret is required for the current CI-to-CM connection.
@@ -25,7 +27,7 @@ Use the Entra app for the matching environment from document 03. Add these **sec
 
 The CI workflow joins the tailnet using the Tailscale OIDC credential, then uses its existing OpenSSH commands to connect to the CM's Tailscale IP. The VM's Tailscale SSH server and tailnet policy authorize that connection; the workflow does not need the administrator SSH private key. The `SSH_PUBLIC_KEY` remains configured on the VMs for Azure VM provisioning, but is not the CI authentication mechanism.
 
-The existing deployment workflow keeps its OpenSSH options, including `StrictHostKeyChecking=no` and `ConnectTimeout=5`. Tailscale SSH uses tailnet identity/policy for access; disabling host-key checking still weakens server identity verification and is retained for compatibility with this lab automation, not recommended for sensitive production workloads.
+The deployment workflow currently uses `StrictHostKeyChecking=accept-new`. This accepts an unknown key on first connection and rejects a changed key only when the key is subsequently remembered. The generated workload inventory also sets `UserKnownHostsFile=/dev/null`, so that host key is not retained across connections. Tailscale identity/policy authorizes access but does not replace host-key verification. Sensitive deployments should provision and verify host keys through a trusted channel.
 
 ## Protect environments and `main`
 
@@ -52,10 +54,10 @@ To access the Environment settings:
 ---
 
 #### 2. Security Considerations for Plan Environments
-* **Warning:** Jobs running plan operations receive the Environment's secrets upon execution.
-* **Best Practices:** 
-  * Keep your repository **Private** (Go to *Settings* $\rightarrow$ *General* $\rightarrow$ *Danger Zone* $\rightarrow$ *Change visibility* $\rightarrow$ *Private*).
-  * If the repository is Public, never grant unverified external fork pull requests permission to run workflows with environment credentials to prevent secret leakage.
+* **Warning:** Jobs running plan operations receive the Environment's secrets and request Azure OIDC access. Pull-request workflows execute repository code, so untrusted contributors must not be able to obtain privileged Azure credentials or state access.
+* **Fork protection:** The checked-in Terraform plan jobs skip pull requests from forks. This does not make same-repository PR code inherently safe.
+* **Required review:** Configure trusted reviewers for `terraform-identity-plan` and `terraform-vmresource-plan`, restrict who can approve, and verify effective GitHub Environment and Entra federated-credential settings. Do not rely on Environment secrets alone as a boundary for untrusted pull-request code.
+* **Best practice:** Keep the repository private if that matches your collaboration needs, but still protect the plan Environments. Repository visibility alone does not replace OIDC subject, Environment, permissions, and reviewer checks.
 
 ---
 
