@@ -33,7 +33,7 @@ jobs:
             echo "Destroy can only run from the main branch."
             exit 1
           fi
-          if [ "$CONFIRMATION" != "yes" ]; then
+          if [ "$CONFIRMATION" != "yes" ] && [ "$CONFIRMATION" != "true" ]; then
             echo "Set confirmation to yes only when you intend to review a destroy plan."
             exit 1
           fi
