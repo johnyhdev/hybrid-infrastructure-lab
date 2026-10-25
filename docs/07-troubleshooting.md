@@ -68,7 +68,7 @@ For Ansible failures:
 4. Inspect the failing task and host reachability; use the ping check in `ansible/run.sh`.
 5. Inspect the affected service with `systemctl` and `journalctl`, fix the role/source, and rerun.
 
-Do not add a Public IP to debug. If bootstrap partially fails, use the configured serial-console recovery path, fix Terraform/cloud-init/Ansible, and redeploy through reviewed workflows.
+Do not add a Public IP to debug. This repository does not configure or verify an Azure Serial Console recovery path. If Tailscale access is unavailable, stop and use an independently verified recovery procedure for your Azure environment; do not assume one is configured by this lab. Fix Terraform/cloud-init/Ansible and redeploy through reviewed workflows.
 
 ## Application checks
 

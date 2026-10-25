@@ -25,6 +25,11 @@ override.tf.json
 *.key
 *.pfx
 credentials.json
+# Common extensionless SSH private-key filenames. Public-key files (*.pub) remain trackable.
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
 
 # IDE
 .vscode/

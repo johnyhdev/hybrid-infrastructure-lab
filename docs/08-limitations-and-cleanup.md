@@ -2,24 +2,24 @@
 
 ## Architecture Scope and Scaling Considerations
 
-- **Design Scope:** This repository serves as an **enterprise-grade reference architecture and automation PoC** demonstrating production-ready patterns (GitHub OIDC, Tailscale Zero-Trust mesh, Least-Privilege RBAC, and GitOps). As a streamlined reference implementation, it defaults to a single-region, single-instance setup and omits higher-tier enterprise add-ons such as multi-region HA/SLA, automated autoscaling, centralized SIEM/logging, alerting, and end-to-end incident response runbooks.
+- **Design Scope:** This repository provides an enterprise-aligned reference architecture and automation baseline demonstrating production-ready patterns across Terraform, GitHub OIDC, Tailscale ZTNA, and Ansible. It is structured as a streamlined, single-region, single-instance deployment suitable for small-to-medium IT environments and internal team infrastructures. As a modular foundation, it intentionally defers higher-tier operational add-ons such as multi-region active-active HA, automated auto-scaling groups, centralized SIEM log aggregation, alerting pipelines, and end-to-end incident response runbooks to downstream organizational hardening.
 - **Default Resource Footprint:** Defaults create one control-manager VM and one workload VM in one region/zone using Ubuntu 24.04 ARM64 (`Standard_D2ps_v6`, zone 1). VM maps allow additional entries, but scaling behavior, quota limits, cross-region routing, inventory, and failover mechanics require explicit validation for larger deployments. Confirm regional ARM64 availability and subscription quota prior to expanding.
 - **Network Access & Emergency Recovery:** No Public IP addresses are provisioned on virtual machines. Administrative access is strictly routed through Tailscale private mesh networking. While the administrator SSH public key is provisioned during Azure VM bootstrapping, this reference setup does not configure a separate private-key or Serial Console emergency recovery path; administrative access should never involve opening public SSH ports to the internet.
 - **Identity & Credential Management:** 
   - Azure VM provisioning requires an authentication mechanism. This architecture installs the administrator SSH public key and disables password authentication. The public key is passed to workflows via `SSH_PUBLIC_KEY`; private-key material must remain strictly protected. Note that marking variables as `sensitive` in Terraform redacts output in CLI logs but does not encrypt plain text in state files.
   - Terraform generates a separate internal CM-to-workload SSH key pair. Its private key is stored in Terraform state and delivered to the CM via cloud-init / custom data. System administrators must protect backend state, state versions/backups, generated plans, pipeline artifacts, cloud-init payloads, and Azure control-plane access.
-  - The Ansible deployment workflow uses Tailscale OIDC coupled with Tailscale SSH policy controls to reach the CM. This design eliminates the need to store long-lived administrator private keys in GitHub CI secrets.
-- **Pipeline Security Trade-offs:** The CI workflow retains `StrictHostKeyChecking=no` for compatibility with automated execution scripts. In strict production environments, server host-key verification should be explicitly pinned and managed.
+  - The Ansible deployment workflow uses Tailscale OIDC and Tailscale SSH policy controls to reach the CM. It does not store an administrator private key in GitHub CI secrets.
+- **Pipeline Security Trade-offs:** Automation uses `StrictHostKeyChecking=accept-new` to accept a host key on first connection and reject a changed key on later connections. This does not authenticate the first connection against an independently verified fingerprint; stricter deployments should provision known host keys through a trusted channel.
 - **Software Lifecycle & Scaffolding:** 
   - VM image versions are set to `latest`; runtime bootstrapping and Ansible playbooks fetch upstream packages, which means subsequent deployments may yield minor software version variances over time.
   - The sample application is a lightweight HTTP responder and does not interact with PostgreSQL. PostgreSQL packages are pre-installed to demonstrate configuration management, but database clustering, schemas, credentials, TLS certificates, and backups are left for targeted downstream implementations. Node Exporter is installed, but centralized Prometheus collection, long-term metric retention, and Grafana dashboards are not provisioned.
   - Variable flags like `*_enabled` in `ansible/group_vars/workload.yml` exist for structural configuration, but baseline playbooks do not conditionally skip roles based on those flags.
   - Load Balancer resources act as structural scaffolding: workload NICs and IP configurations are not pre-associated with the backend pool by default. The frontend is private; do not enable it expecting immediate load-balancing behavior without wiring backend pools.
 - **Zero-Trust Scope & Repository Access:** 
-  - Tailscale `tag:ci` is granted access to reach `tag:cm` and the workload subnet on configured TCP ports. The SSH policy permits `azureadmin` and `root` access on `tag:cm`. Although deployment workflows connect as `azureadmin` (root is not required), team leads should audit tag ownership and scope rules regularly.
+  - Tailscale `tag:ci` is granted access to reach `tag:cm` and the workload subnet on configured TCP ports. The SSH policy permits `azureadmin` on `tag:cm`; it does not grant `root` in that rule. Audit tag ownership and scope rules regularly.
   - The CM clones this repository using a hardcoded HTTPS URL. For private repository adoption, implement explicit authentication mechanisms (e.g., GitHub Apps or deploy keys); never embed Personal Access Tokens (PATs) in cloud-init scripts.
   - Generated Terraform plan summaries and pipeline artifacts may expose internal network topology or resource parameters. Access and retention periods must be strictly governed.
-- **Deprovisioning Pipeline Behavior:** The destroy workflow generates and displays a destroy plan, followed by an execution of `terraform destroy -auto-approve`. It does not apply the previously saved plan artifact directly. Environment approval occurs before plan generation; thus, approval is granted for the job execution rather than a reviewed plan diff. Run only in target test/reference environments and adapt to a two-stage review-then-apply pipeline before adapting for production environments.
+- **Deprovisioning Pipeline Behavior:** The destroy workflow creates and displays a saved destroy plan in the `terraform-vmresource-plan` Environment. The apply job then waits for approval in the protected `terraform-destroy` Environment, verifies that the plan artifact belongs to the same repository, commit, and workflow run, and applies that exact plan. Plan artifacts and summaries can contain sensitive infrastructure details; restrict access and keep retention short. A stale or failed plan must be regenerated and reviewed.
 
 ---
 
@@ -27,7 +27,7 @@
 
 Infrastructure cleanup spans both compute resources and core identity/state layers. **Never delete the state storage backend first**, as Terraform requires active state files to cleanly deprovision managed Azure resources.
 
-Before executing cleanup, verify your active Azure subscription and cross-check backend configurations in both `terraform/01-identity/backend.tf` and `terraform/02-vmresource/backend.tf`. Confirm the active resource group, storage account, blob container, and state keys. Default configurations reference `rg-terraform-state`, `sthybridlab260826`, `tfstate`, `hybrid-identity.tfstate`, and `hybrid-vmresource.tfstate`—verify these exact names against your deployed environment.
+Before executing cleanup, verify your active Azure subscription and cross-check backend configurations in both `terraform/01-identity/backend.tf` and `terraform/02-vmresource/backend.tf`. Confirm the active resource group, storage account, blob container, and state keys from the configuration for the deployment you intend to remove. Do not copy backend names from another clone or rely on names in old logs.
 
 ### A. Remove the Compute and Network Module (Module 02)
 
@@ -39,7 +39,7 @@ az vm list --resource-group "<LAB_RESOURCE_GROUP>" --show-details --output table
 az resource list --resource-group "<LAB_RESOURCE_GROUP>" --output table
 ```
 
-2. In GitHub Actions, navigate to **Actions → Terraform VM Resource Destroy → Run workflow** on `main`. Select the target repository and `terraform-destroy` Environment, then trigger the workflow. *Note:* This workflow generates a destroy plan and executes `terraform destroy -auto-approve`. Ensure target environment parameters are fully reviewed prior to pipeline approval.
+2. In GitHub Actions, navigate to **Actions → Terraform VM Resource Destroy → Run workflow** on `main`. Confirm the destructive input, inspect the generated plan summary, and approve the protected `terraform-destroy` Environment only after reviewing that plan. The workflow applies the same saved destroy plan; if the run fails or the state changes, generate and review a new plan.
 
 3. Verify Azure has successfully deprovisioned all module-02 resources (VMs, NICs, VNets, NSGs, and optional Load Balancers):
 

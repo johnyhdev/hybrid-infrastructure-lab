@@ -91,18 +91,20 @@ Follow the numbered setup guides in the `docs/` folder in order:
 6. [06 — Run workflows, deploy, and verify](docs/06-deploy-and-verify.md)
 7. [07 — Troubleshooting by checkpoint](docs/07-troubleshooting.md)
 8. [08 — Limitations, security, and cleanup](docs/08-limitations-and-cleanup.md)
+9. [09 — Clone customization and security audit](docs/09-clone-customization-and-security-audit.md)
 
 ---
 
 ## ⚠️ Security Notes and Known Limits
 
-- **SSH & Credentials:** Azure Linux VM provisioning uses an administrator SSH public key and disables password authentication. The public key is supplied via `SSH_PUBLIC_KEY` in GitHub Environments. Terraform also generates an internal control-manager-to-workload SSH key stored in state. Protect your state files and Blob backend.
-- **Network Security:** The Ansible workflow joins Tailscale through OIDC and uses OpenSSH to reach the control manager without storing private keys in GitHub. However, it disables host-key checking for compatibility.
+- **SSH & Credentials:** Azure Linux VM provisioning uses an administrator SSH public key and disables password authentication. The public key is supplied via `SSH_PUBLIC_KEY` in GitHub Environments. Terraform also generates an internal control-manager-to-workload SSH key stored in state and delivered through cloud-init/custom data. Protect state, plans, artifacts, and cloud-init data; Terraform's `sensitive` flag does not encrypt state.
+- **Network Security:** The Ansible workflow joins Tailscale through OIDC and uses OpenSSH to reach the control manager without storing an administrator private key in GitHub. Automation uses trust-on-first-use rather than a pre-pinned host key; workload inventory also discards known-host data, so server identity is not independently verified.
 - **Functional Scope:**
   - The sample app is a small HTTP responder on loopback port 8080 proxied by Nginx on port 80. No public internet endpoint.
   - PostgreSQL packages are installed, but no database, schema, or credentials are configured.
   - Node Exporter is installed, but no Prometheus server or dashboard is included.
   - Scale-out, High Availability (HA), and automated failover are not validated.
+- **Workflow protections:** PR checks request GitHub OIDC permissions; ensure untrusted PR code cannot obtain Azure credentials or state access. Configure and verify Environment reviewers, branch restrictions, and federated credentials outside the repository.
 
 See [all limitations and cleanup guidance](docs/08-limitations-and-cleanup.md) for more details.
 
