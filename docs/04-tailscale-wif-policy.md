@@ -14,7 +14,7 @@ Get-Content .\tailscale\policy.hujson -Raw | Set-Clipboard
 ```
 
 2. Open Tailscale Admin Console → **Access controls** → policy **JSON editor**. Select all of the current policy text, paste the clipboard contents, and run the editor's **Preview/Validate** action before saving. Resolve any syntax or validation errors; do not save a partial policy.
-3. Review the effective policy before applying. The repository version defines `tag:cm` and `tag:ci`, auto-approves route `10.20.2.0/24`, permits the documented `tag:ci` TCP 22/443 access, and allows Tailscale SSH to the CM as `azureadmin` only or follow least priviledge with group and maintains scopes as low as possible.
+3. Review the effective policy before applying. The repository version defines `tag:cm` and `tag:ci`, auto-approves route `10.20.2.0/24`, permits `tag:ci` TCP 22/443 access to the CM and workload subnet, and allows Tailscale SSH to the CM as `azureadmin` for `autogroup:admin` and `tag:ci`. Confirm that these grants match your intended access scope.
 4. Save/apply the policy in the Admin Console. Confirm that the editor reports a successful validation/save and that the saved policy includes both tags, the expected route, and SSH grants. A Git commit alone does not apply the initial tailnet policy.
 5. If Terraform CIDRs or host roles change later, update the policy and Terraform NSGs together, validate the complete policy again, and only then merge the change. The policy GitOps workflow tests/applies later changes; it does not automatically provision or repair a missing initial policy.
 
