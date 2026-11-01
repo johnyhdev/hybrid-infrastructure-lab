@@ -17,6 +17,7 @@ Choose a globally unique suffix. Keep the same names in both backend files. Stor
 
 ```powershell
 az group create --name $stateResourceGroup --location $location
+
 az storage account create `
   --name $storageAccount `
   --resource-group $stateResourceGroup `
@@ -27,12 +28,35 @@ az storage account create `
   --allow-blob-public-access false `
   --https-only true `
   --allow-shared-key-access false
+```
 
+**Note**: Troubleshooting: SubscriptionNotFound During Storage Account Creation
+
+When creating the Azure Storage Account, the command may fail with a SubscriptionNotFound error if the Microsoft.Storage resource provider is not registered for the selected subscription.
+
+Step 1 — Register the Azure Storage Resource Provider
+```powershell
+az provider register --namespace Microsoft.Storage --subscription "<Your-subscription-ID>"
+```
+
+Step 2 — Check the Registration Status
+```powershell
+az provider show --namespace Microsoft.Storage --subscription "<Your-subscription-ID>" --query registrationState -o tsv
+```
+Wait until the command returns (Provider registration can take several minutes):
+
+```powershell
+Registered
+```
+Then run the code create storageAccount again. After successfull, continue:
+
+```powershell
 az storage container create `
   --name $container `
   --account-name $storageAccount `
   --auth-mode login
 ```
+
 
 If the selected Azure CLI/API does not support disabling shared-key access, stop and verify the current backend authentication design; never put an account key into Terraform configuration. Enable Blob versioning and soft-delete/data-protection safeguards in the Storage Account. Storage firewall restrictions must still allow your administrators and GitHub runners to reach the backend.
 

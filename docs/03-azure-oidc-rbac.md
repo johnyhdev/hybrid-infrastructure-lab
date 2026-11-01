@@ -243,7 +243,29 @@ az ad app federated-credential delete --id "<APP_OBJECT_ID>" --federated-credent
 az ad app federated-credential list --id "<APP_OBJECT_ID>" --output table
 ```
 
-The final list should no longer contain the revoked name. Do not revoke a credential still used by an active workflow.
+The final list should no longer contain the revoked name. **Do not revoke a credential still used by an active workflow**.
+
+## Deploy 01-Identity to create main resource
+
+Before assigning workload-level RBAC roles, you must deploy the `01-identity` module to create the lab Resource Group and foundational identities.
+
+Now move to 01-identity folder (you are at root hybrid-infrastructure-lab now):
+```powershell
+cd terraform/01-identity
+```
+
+Run these codes:
+```powershell
+terraform init
+terraform fmt
+terraform validate
+terraform plan
+```
+
+Make sure the Plan adds 3 new resources. Then
+```powershell
+terraform apply -auto-approve
+```
 
 ## Assign Azure RBAC roles
 
@@ -331,26 +353,11 @@ az role assignment create --assignee-object-id $spObjectIds["terraform-identity-
 az role assignment create --assignee-object-id $spObjectIds["terraform-identity-apply"] --assignee-principal-type ServicePrincipal --role "User Access Administrator" --scope $subscriptionScope
 ```
 
-The identity-apply `User Access Administrator` grant at subscription scope is powerful and is required by this initial bootstrap design. Use a dedicated lab subscription; once the identity foundation has been created, remove or narrow that grant only after verifying no planned identity operation needs it. The `terraform-destroy` app is for module 02 only; it does not remove the module 01 Resource Group or identity. For a fresh setup, apply the three bootstrap role assignments (identity-plan Reader plus identity-apply Contributor and User Access Administrator) before the first identity apply. After that apply has created the Resource Group:
+The identity-apply `User Access Administrator` grant at subscription scope is powerful and is required by this initial bootstrap design. Use a dedicated lab subscription; once the identity foundation has been created, **remove or narrow that grant only after verifying no planned identity operation needs it**. 
 
-Now move to 01-identity folder (you are at root hybrid-infrastructure-lab now):
-```powershell
-cd terraform/01-identity
-```
+The `terraform-destroy` app is for module 02 only; it does not remove the module 01 Resource Group or identity. For a fresh setup, apply the three bootstrap role assignments (identity-plan Reader plus identity-apply Contributor and User Access Administrator) before the first identity apply. 
 
-Run these codes:
-```powershell
-terraform init
-terraform fmt
-terraform validate
-terraform plan
-```
-
-Make sure the Plan add 3 new resources. Then
-```powershell
-terraform apply -auto-approve
-```
-Now, terraform will create 3 new resources. Obtain its scope and grant the three workload roles:
+Now that the lab Resource Group has been created, obtain its scope and grant the three workload roles:
 
 ```powershell
 $labRgScope = az group show --name "<LAB_RESOURCE_GROUP>" --query id -o tsv
