@@ -103,7 +103,7 @@ jobs:
             fi
 
             RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge$MAX_RETRIES ]; then
+            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
               echo "ERROR: Timed out waiting for CM Node with tag:cm to register on Tailscale."
               exit 1
             fi
@@ -121,7 +121,7 @@ jobs:
           
           until ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 azureadmin@$TARGET_IP "test -f /var/log/cloud-init-done.tag && test -d /home/azureadmin/hybrid-infrastructure-lab" 2>/dev/null; do
             RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge$MAX_RETRIES ]; then
+            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
               echo "ERROR: Timed out waiting for Cloud-Init setup to complete on $TARGET_IP."
               exit 1
             fi
